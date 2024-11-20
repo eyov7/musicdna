@@ -3,6 +3,8 @@ import librosa
 import logging
 from dataclasses import dataclass
 from typing import List, Dict
+from frequency_analyzer import FrequencyAnalyzer
+from pattern_analyzer import PatternAnalyzer
 
 logger = logging.getLogger(__name__)
 
@@ -16,11 +18,24 @@ class Match:
 class SimilarityDetector:
     def __init__(self, 
                  min_duration: float = 1.0,  # Minimum match duration in seconds
-                 overlap_ratio: float = 0.5,  # Window overlap ratio
-                 context_size: int = 3):      # Number of windows to consider for context
+                 window_overlap: float = 0.5,  # Window overlap ratio
+                 context_size: int = 3,
+                 base_threshold: float = 0.8,
+                 n_freq_bands: int = 8):
         self.min_duration = min_duration
-        self.overlap_ratio = overlap_ratio
+        self.window_overlap = window_overlap
         self.context_size = context_size
+        self.mix_analyzer = MixAnalyzer(
+            base_threshold=base_threshold,
+            max_threshold_reduction=0.3,
+            density_sensitivity=0.5
+        )
+        self.freq_analyzer = FrequencyAnalyzer(n_bands=n_freq_bands)
+        self.pattern_analyzer = PatternAnalyzer(
+            min_pattern_length=min_duration,
+            max_pattern_gap=0.5,
+            similarity_threshold=0.85
+        )
 
     def sliding_window_similarity(self, 
                                 sample_chroma: np.ndarray,
@@ -34,7 +49,7 @@ class SimilarityDetector:
         
         # Calculate window parameters
         window_length = sample_chroma.shape[1]  # Use sample length as window
-        hop_size = int(window_length * (1 - self.overlap_ratio))
+        hop_size = int(window_length * (1 - self.window_overlap))
         
         # Initialize arrays for storing similarity scores
         num_windows = (song_chroma.shape[1] - window_length) // hop_size + 1
@@ -154,3 +169,141 @@ class SimilarityDetector:
             context_scores[i] = np.average(context, weights=weights)
         
         return context_scores
+
+    def analyze_audio(self, 
+                     sample_audio: np.ndarray,
+                     song_audio: np.ndarray,
+                     sr: int = 44100) -> tuple:
+        """
+        Analyze audio and compute weighted features
+        """
+        try:
+            # Calculate frequency band weights
+            weights = self.freq_analyzer.calculate_band_weights(
+                sample_audio,
+                reference_audio=song_audio
+            )
+            
+            # Analyze frequency content
+            sample_freqs = self.freq_analyzer.analyze_frequency_content(sample_audio)
+            song_freqs = self.freq_analyzer.analyze_frequency_content(song_audio)
+            
+            # Apply weights
+            weighted_sample = self.freq_analyzer.apply_band_weights(sample_freqs, weights)
+            weighted_song = self.freq_analyzer.apply_band_weights(song_freqs, weights)
+            
+            return weighted_sample, weighted_song, weights
+            
+        except Exception as e:
+            logger.error(f"Error in audio analysis: {str(e)}")
+            raise
+
+    def detect_matches(self,
+                      sample_audio: np.ndarray,
+                      song_audio: np.ndarray,
+                      stems: Dict[str, np.ndarray],
+                      sr: int = 44100) -> List[Dict]:
+        """
+        Detect sample matches using multiple analysis methods
+        """
+        try:
+            # 1. Analyze audio and get weighted features
+            sample_features, song_features, freq_weights = self.analyze_audio(
+                sample_audio,
+                song_audio,
+                sr=sr
+            )
+            
+            # 2. Calculate mix density and dynamic threshold
+            density, threshold = self.mix_analyzer.analyze_section(stems)
+            
+            # 3. Get raw confidence scores using weighted features
+            confidence_scores = self.calculate_similarity(sample_features, song_features)
+            
+            # 4. Adjust confidence based on mix density
+            adjusted_scores = self.mix_analyzer.adjust_confidence_scores(
+                confidence_scores,
+                density
+            )
+            
+            # 5. Find initial matches using dynamic threshold
+            matches = []
+            for i in range(len(adjusted_scores)):
+                if adjusted_scores[i] > threshold[i]:
+                    match = {
+                        'start_time': i * 512 / sr,
+                        'confidence': float(adjusted_scores[i]),
+                        'mix_density': float(density[i]),
+                        'threshold': float(threshold[i]),
+                        'freq_weights': freq_weights.tolist()
+                    }
+                    matches.append(match)
+            
+            # 6. Group continuous matches
+            grouped_matches = self.group_continuous_matches(matches)
+            
+            # 7. Filter by minimum duration
+            duration_filtered = [m for m in grouped_matches 
+                               if m['duration'] >= self.min_duration]
+            
+            # 8. Enhance matches with pattern information
+            final_matches = self.pattern_analyzer.analyze_matches(
+                duration_filtered,
+                song_features,
+                sr=sr,
+                hop_length=512
+            )
+            
+            # Sort matches by confidence
+            final_matches.sort(key=lambda x: x['confidence'], reverse=True)
+            
+            logger.info(f"Found {len(final_matches)} matches after all analysis")
+            return final_matches
+            
+        except Exception as e:
+            logger.error(f"Error in match detection: {str(e)}")
+            raise
+
+    def calculate_similarity(self, 
+                           sample_features: np.ndarray,
+                           song_features: np.ndarray) -> np.ndarray:
+        """
+        Compute similarity between frequency-weighted features
+        """
+        try:
+            # Calculate cosine similarity for each frame
+            similarities = []
+            for i in range(song_features.shape[1] - sample_features.shape[1] + 1):
+                frame = song_features[:, i:i+sample_features.shape[1]]
+                sim = np.sum(sample_features * frame) / (
+                    np.sqrt(np.sum(sample_features**2)) * 
+                    np.sqrt(np.sum(frame**2))
+                )
+                similarities.append(sim)
+            
+            return np.array(similarities)
+            
+        except Exception as e:
+            logger.error(f"Error calculating similarity: {str(e)}")
+            raise
+
+    def group_continuous_matches(self, matches: List[Dict]) -> List[Dict]:
+        """
+        Group continuous matches
+        """
+        grouped_matches = []
+        current_match = None
+        
+        for match in matches:
+            if current_match is None:
+                current_match = match
+            elif match['start_time'] - current_match['start_time'] < 1:
+                current_match['duration'] = match['start_time'] - current_match['start_time']
+            else:
+                grouped_matches.append(current_match)
+                current_match = match
+        
+        if current_match is not None:
+            grouped_matches.append(current_match)
+        
+        return grouped_matches
