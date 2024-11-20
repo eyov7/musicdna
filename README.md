@@ -5,24 +5,34 @@ This project implements a music sample detection system that can find occurrence
 - Basic Pitch for MIDI conversion
 - Feature extraction and pattern matching
 
-## Setup
+## Installation
 
-1. Install dependencies:
+1. Clone the repository with submodules:
+```bash
+git clone https://github.com/yourusername/musicdna.git
+cd musicdna
+git submodule update --init --recursive
+```
+
+2. Install dependencies:
 ```bash
 pip install -r requirements.txt
 ```
 
-2. Run the demo:
+## Running the Demo
+
+1. Start the Gradio interface:
 ```bash
 python app.py
 ```
 
+2. Open the web interface (default: http://localhost:7860)
+
 ## Usage
 
-1. Open the web interface (default: http://localhost:7860)
-2. Upload a short audio sample (5-15 seconds)
-3. Upload 3-5 songs to search through
-4. View results showing:
+1. Upload a short audio sample (5-15 seconds)
+2. Upload 3-5 songs to search through
+3. View results showing:
    - Match locations with confidence scores
    - Matched audio segments
    - Similarity visualizations
