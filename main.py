@@ -8,6 +8,7 @@ from tempfile import NamedTemporaryFile
 import matplotlib.pyplot as plt
 from demucs_handler import DemucsProcessor
 from basic_pitch_handler import BasicPitchConverter
+from similarity_detector import SimilarityDetector
 
 # Set up logging
 logging.basicConfig(
@@ -19,51 +20,38 @@ logger = logging.getLogger(__name__)
 # Initialize processors
 demucs = DemucsProcessor()
 basic_pitch = BasicPitchConverter()
+similarity_detector = SimilarityDetector(
+    min_duration=1.0,     # Minimum 1 second match
+    overlap_ratio=0.5,    # 50% window overlap
+    context_size=3        # Consider 3 windows before and after
+)
 
-def create_similarity_plot(similarity_matrix, window_size):
-    """Create visualization of similarity over time"""
-    plt.figure(figsize=(12, 4))
-    plt.plot(np.max(similarity_matrix, axis=0))
-    plt.title('Sample Similarity Over Time')
-    plt.xlabel('Time (frames)')
-    plt.ylabel('Similarity Score')
+def create_similarity_plot(similarity_scores: np.ndarray, matches, sample_length, song_length):
+    """Create visualization of similarity over time with marked matches"""
+    plt.figure(figsize=(15, 6))
+    
+    # Plot similarity timeline
+    time_axis = np.linspace(0, song_length, len(similarity_scores))
+    plt.plot(time_axis, similarity_scores, label='Similarity Score', alpha=0.7)
+    
+    # Plot match regions
+    for match in matches:
+        plt.axvspan(match.start_time, match.end_time, 
+                   color='green', alpha=0.3)
+        plt.plot(match.start_time, 0.8, 'r^', 
+                label=f'Match (conf: {match.confidence:.2f}, context: {match.context_score:.2f})')
+    
     plt.axhline(y=0.8, color='r', linestyle='--', label='Threshold')
+    plt.title('Sample Detection Timeline')
+    plt.xlabel('Time (seconds)')
+    plt.ylabel('Similarity Score')
     plt.legend()
+    plt.grid(True, alpha=0.3)
     
     with NamedTemporaryFile(suffix='.png', delete=False) as temp_file:
-        plt.savefig(temp_file.name)
+        plt.savefig(temp_file.name, dpi=300, bbox_inches='tight')
         plt.close()
         return temp_file.name
-
-def find_sample_timestamps(similarity_matrix, threshold=0.8):
-    """Find timestamps where sample appears in the song"""
-    peak_scores = np.max(similarity_matrix, axis=0)
-    matches = np.where(peak_scores > threshold)[0]
-    
-    # Group consecutive frames
-    if len(matches) == 0:
-        return []
-    
-    timestamps = []
-    current_start = matches[0]
-    
-    for i in range(1, len(matches)):
-        if matches[i] - matches[i-1] > 1:
-            timestamps.append({
-                'start_frame': current_start,
-                'end_frame': matches[i-1],
-                'confidence': float(np.mean(peak_scores[current_start:matches[i-1]]))
-            })
-            current_start = matches[i]
-    
-    # Add last group
-    timestamps.append({
-        'start_frame': current_start,
-        'end_frame': matches[-1],
-        'confidence': float(np.mean(peak_scores[current_start:matches[-1]]))
-    })
-    
-    return timestamps
 
 def analyze_sample(sample_audio, full_song):
     """Find occurrences of sample in the full song"""
@@ -90,35 +78,44 @@ def analyze_sample(sample_audio, full_song):
             sr=sr
         )
         
-        # Compute similarity matrix
-        similarity_matrix = librosa.segment.cross_similarity(
-            sample_chroma, 
+        # Find matches using sliding window
+        matches = similarity_detector.sliding_window_similarity(
+            sample_chroma,
             song_chroma,
-            mode='affinity'
+            sr=sr
         )
         
-        # Find timestamps of potential matches
-        matches = find_sample_timestamps(similarity_matrix)
+        # Get raw similarity scores for visualization
+        similarity_matrix = librosa.segment.cross_similarity(
+            sample_chroma, song_chroma, mode='affinity'
+        )
+        similarity_scores = np.max(similarity_matrix, axis=0)
         
-        # Convert frames to timestamps
-        hop_length = 512  # Default hop length in librosa
-        frame_time = hop_length / sr
-        
-        for match in matches:
-            match['start_time'] = match['start_frame'] * frame_time
-            match['end_time'] = match['end_frame'] * frame_time
-            del match['start_frame']
-            del match['end_frame']
-        
-        # Create visualizations
-        similarity_plot = create_similarity_plot(similarity_matrix, len(sample_chroma[0]))
+        # Create visualization
+        sample_length = librosa.get_duration(y=sample_y, sr=sr)
+        song_length = librosa.get_duration(y=song_y, sr=sr)
+        plot_path = create_similarity_plot(
+            similarity_scores,
+            matches,
+            sample_length,
+            song_length
+        )
         
         # Prepare results
         results = {
-            "Sample Length": f"{librosa.get_duration(y=sample_y, sr=sr):.2f} seconds",
-            "Song Length": f"{librosa.get_duration(y=song_y, sr=sr):.2f} seconds",
-            "Potential Matches": matches,
-            "Number of Matches": len(matches)
+            "Sample Length": f"{sample_length:.2f} seconds",
+            "Song Length": f"{song_length:.2f} seconds",
+            "Matches Found": len(matches),
+            "Detailed Matches": [
+                {
+                    "Start Time": f"{m.start_time:.2f}s",
+                    "End Time": f"{m.end_time:.2f}s",
+                    "Duration": f"{m.end_time - m.start_time:.2f}s",
+                    "Confidence": f"{m.confidence:.2%}",
+                    "Context Score": f"{m.context_score:.2%}"
+                }
+                for m in matches
+            ]
         }
         
         logger.info("Analysis completed successfully")
@@ -128,7 +125,7 @@ def analyze_sample(sample_audio, full_song):
             results,
             sample_audio,
             full_song,
-            similarity_plot
+            plot_path
         )
         
     except Exception as e:
