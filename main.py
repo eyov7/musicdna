@@ -22,7 +22,7 @@ demucs = DemucsProcessor()
 basic_pitch = BasicPitchConverter()
 similarity_detector = SimilarityDetector(
     min_duration=1.0,     # Minimum 1 second match
-    overlap_ratio=0.5,    # 50% window overlap
+    window_overlap=0.5,    # 50% window overlap
     context_size=3        # Consider 3 windows before and after
 )
 
