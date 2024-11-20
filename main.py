@@ -2,6 +2,9 @@ import gradio as gr
 import logging
 import librosa
 import numpy as np
+import soundfile as sf
+import os
+from tempfile import NamedTemporaryFile
 
 # Set up logging
 logging.basicConfig(
@@ -10,42 +13,45 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+def load_and_analyze_audio(audio_path):
+    """Helper function to load and analyze a single audio file"""
+    y, sr = librosa.load(audio_path)
+    duration = librosa.get_duration(y=y, sr=sr)
+    tempo, _ = librosa.beat.beat_track(y=y, sr=sr)
+    
+    return {
+        "Duration": f"{duration:.2f} seconds",
+        "Sample Rate": f"{sr} Hz",
+        "Estimated Tempo": f"{tempo:.0f} BPM",
+        "Number of Samples": len(y)
+    }
+
 def analyze_audio(sample_audio, comparison_audio):
     """Analyze basic properties of the uploaded audio files"""
     logger.info("Analyze audio function called")
-    logger.info(f"Sample audio: {sample_audio}")
-    logger.info(f"Comparison audio: {comparison_audio}")
+    logger.info(f"Sample audio path: {sample_audio}")
+    logger.info(f"Comparison audio path: {comparison_audio}")
     
     try:
-        # Load and analyze sample audio
-        sample_y, sample_sr = librosa.load(sample_audio)
-        sample_duration = librosa.get_duration(y=sample_y, sr=sample_sr)
-        sample_tempo, _ = librosa.beat.beat_track(y=sample_y, sr=sample_sr)
-        
-        # Load and analyze comparison audio
-        comp_y, comp_sr = librosa.load(comparison_audio)
-        comp_duration = librosa.get_duration(y=comp_y, sr=comp_sr)
-        comp_tempo, _ = librosa.beat.beat_track(y=comp_y, sr=comp_sr)
+        # Analyze both audio files
+        sample_analysis = load_and_analyze_audio(sample_audio)
+        comp_analysis = load_and_analyze_audio(comparison_audio)
         
         # Create analysis results
         results = {
-            "Sample Audio": {
-                "Duration": f"{sample_duration:.2f} seconds",
-                "Sample Rate": f"{sample_sr} Hz",
-                "Estimated Tempo": f"{sample_tempo:.0f} BPM"
-            },
-            "Comparison Audio": {
-                "Duration": f"{comp_duration:.2f} seconds",
-                "Sample Rate": f"{comp_sr} Hz",
-                "Estimated Tempo": f"{comp_tempo:.0f} BPM"
-            }
+            "Sample Audio": sample_analysis,
+            "Comparison Audio": comp_analysis
         }
         
-        logger.info(f"Analysis results: {results}")
+        logger.info("Analysis completed successfully")
+        logger.info(f"Results: {results}")
+        
         return results, sample_audio, comparison_audio
         
     except Exception as e:
         logger.error(f"Error in analyze_audio: {str(e)}")
+        import traceback
+        logger.error(traceback.format_exc())
         return {"error": str(e)}, None, None
 
 # Create Gradio interface
@@ -61,7 +67,10 @@ demo = gr.Interface(
         gr.Audio(label="Comparison Audio Playback")
     ],
     title="Audio Analysis Demo",
-    description="Upload two audio files to analyze their properties"
+    description="Upload two audio files to analyze their properties",
+    examples=[
+        ["path/to/example1.wav", "path/to/example2.wav"]
+    ]
 )
 
 # For Lightning AI
