@@ -23,7 +23,7 @@ pip install -r requirements.txt
 
 1. Start the Gradio interface:
 ```bash
-python app.py
+python main.py
 ```
 
 2. Open the web interface (default: http://localhost:7860)
