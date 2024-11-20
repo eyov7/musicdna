@@ -4,3 +4,7 @@ librosa>=0.10.1
 numpy>=1.24.0
 soundfile>=0.12.1
 matplotlib>=3.7.0
+demucs>=4.0.0
+basic-pitch>=0.2.6
+torch>=2.0.0
+torchaudio>=2.0.0
