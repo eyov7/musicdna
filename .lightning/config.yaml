@@ -1,2 +1,4 @@
 app:
   gradio: true
+  serve: true
+  port: 7860
