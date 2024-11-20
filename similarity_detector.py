@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import List, Dict
 from frequency_analyzer import FrequencyAnalyzer
 from pattern_analyzer import PatternAnalyzer
+from advanced_analysis import MixAnalyzer
 
 logger = logging.getLogger(__name__)
 
