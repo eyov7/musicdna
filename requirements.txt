@@ -1,2 +1,4 @@
 gradio>=3.50.2
 lightning>=2.0.0
+librosa>=0.10.1
+numpy>=1.24.0
