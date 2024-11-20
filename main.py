@@ -67,10 +67,7 @@ demo = gr.Interface(
         gr.Audio(label="Comparison Audio Playback")
     ],
     title="Audio Analysis Demo",
-    description="Upload two audio files to analyze their properties",
-    examples=[
-        ["path/to/example1.wav", "path/to/example2.wav"]
-    ]
+    description="Upload two audio files to analyze their properties"
 )
 
 # For Lightning AI
