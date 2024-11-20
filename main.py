@@ -15,16 +15,25 @@ logger = logging.getLogger(__name__)
 
 def load_and_analyze_audio(audio_path):
     """Helper function to load and analyze a single audio file"""
-    y, sr = librosa.load(audio_path)
-    duration = librosa.get_duration(y=y, sr=sr)
-    tempo, _ = librosa.beat.beat_track(y=y, sr=sr)
-    
-    return {
-        "Duration": f"{duration:.2f} seconds",
-        "Sample Rate": f"{sr} Hz",
-        "Estimated Tempo": f"{tempo:.0f} BPM",
-        "Number of Samples": len(y)
-    }
+    try:
+        y, sr = librosa.load(audio_path)
+        duration = librosa.get_duration(y=y, sr=sr)
+        tempo, _ = librosa.beat.beat_track(y=y, sr=sr)
+        
+        # Convert numpy values to Python native types
+        duration_float = float(duration)
+        tempo_float = float(tempo)
+        samples_int = int(len(y))
+        
+        return {
+            "Duration": f"{duration_float:.2f} seconds",
+            "Sample Rate": f"{sr} Hz",
+            "Estimated Tempo": f"{tempo_float:.0f} BPM",
+            "Number of Samples": samples_int
+        }
+    except Exception as e:
+        logger.error(f"Error in load_and_analyze_audio: {str(e)}")
+        raise
 
 def analyze_audio(sample_audio, comparison_audio):
     """Analyze basic properties of the uploaded audio files"""
