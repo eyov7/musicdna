@@ -24,9 +24,15 @@ class DemucsProcessor:
         try:
             # Load audio
             wav, sr = torchaudio.load(audio_path)
-            wav = wav.mean(0, keepdim=True)  # Convert to mono
             
-            # Move to GPU if available
+            # Ensure stereo
+            if wav.shape[0] == 1:
+                wav = wav.repeat(2, 1)
+            elif wav.shape[0] > 2:
+                wav = wav[:2, :]  # Take first two channels if more than stereo
+            
+            # Add batch dimension and move to device
+            wav = wav.unsqueeze(0)  # Add batch dimension: (2, samples) -> (1, 2, samples)
             device = 'cuda' if torch.cuda.is_available() else 'cpu'
             wav = wav.to(device)
             
@@ -37,7 +43,8 @@ class DemucsProcessor:
             
             # Create dictionary with stems
             stem_dict = {
-                name: stems[i] for i, name in enumerate(['drums', 'bass', 'other', 'vocals'])
+                name: stems[0, i]  # Take first batch
+                for i, name in enumerate(['drums', 'bass', 'other', 'vocals'])
             }
             
             logger.info("Stem separation completed successfully")

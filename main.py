@@ -81,8 +81,14 @@ def analyze_sample(sample_audio, full_song):
         song_stems, _ = demucs.separate_stems(full_song)
         
         # Extract features (focusing on harmonic content from 'other' stem)
-        sample_chroma = librosa.feature.chroma_cqt(y=sample_stems['other'].squeeze(), sr=sr)
-        song_chroma = librosa.feature.chroma_cqt(y=song_stems['other'].squeeze(), sr=sr)
+        sample_chroma = librosa.feature.chroma_cqt(
+            y=librosa.to_mono(sample_stems['other']), 
+            sr=sr
+        )
+        song_chroma = librosa.feature.chroma_cqt(
+            y=librosa.to_mono(song_stems['other']), 
+            sr=sr
+        )
         
         # Compute similarity matrix
         similarity_matrix = librosa.segment.cross_similarity(
