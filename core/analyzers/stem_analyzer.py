@@ -9,8 +9,7 @@ from .base_analyzer import BaseAnalyzer
 import librosa
 import torch
 from demucs.pretrained import get_model
-from basic_pitch import ICASSP_2022_MODEL_PATH
-from basic_pitch.inference import estimate_notes
+from basic_pitch import predict
 
 logger = logging.getLogger(__name__)
 
@@ -70,17 +69,20 @@ class StemAnalyzer(BaseAnalyzer):
     
     def _create_midi_dna(self, audio: np.ndarray) -> List:
         """Generate MIDI note pattern fingerprint."""
-        # Basic Pitch estimate_notes returns note events directly
-        note_events = estimate_notes(audio[0], self.sample_rate)
+        # Get model predictions
+        model_output = predict(audio[0], self.sample_rate)
+        frequencies, confidence, onset = model_output
         
-        # Convert note events to our format
+        # Convert to note list format
         notes = []
-        for note in note_events:
-            notes.append({
-                'time': note.start_time,
-                'pitch': note.pitch,
-                'confidence': note.confidence
-            })
+        for t in range(len(frequencies)):
+            for f in range(len(frequencies[t])):
+                if onset[t, f] > 0.5:  # Note onset detected
+                    notes.append({
+                        'time': t * 0.01,  # Basic Pitch uses 10ms frames
+                        'pitch': f,
+                        'confidence': confidence[t, f]
+                    })
         return notes
     
     def _is_melodic(self, audio: np.ndarray) -> bool:
