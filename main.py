@@ -2,7 +2,7 @@ import gradio as gr
 import numpy as np
 import librosa
 import logging
-from core.analyzers import SpectralAnalyzer, StemAnalyzer, MIDIAnalyzer
+from core.analyzers import GranularSampleDetector
 import torch
 
 # Configure logging
@@ -12,11 +12,8 @@ logger = logging.getLogger(__name__)
 class MusicDNAApp:
     def __init__(self):
         device = "cuda" if torch.cuda.is_available() else "cpu"
-        # Initialize analyzers
-        self.spectral_analyzer = SpectralAnalyzer()
-        self.stem_analyzer = StemAnalyzer(device=device)
-        self.midi_analyzer = MIDIAnalyzer(device=device)
-        logger.info(f"Initialized analyzers. Using device: {device}")
+        self.detector = GranularSampleDetector(device=device)
+        logger.info(f"Initialized MusicDNA App. Using device: {device}")
 
     def process_audio(self, sample_path: str, song_path: str) -> str:
         """
@@ -30,64 +27,51 @@ class MusicDNAApp:
 
             # Analyze sample
             logger.info("Analyzing sample...")
-            sample_spectral = self.spectral_analyzer.analyze(sample_y)
-            sample_stems = self.stem_analyzer.analyze(sample_y)
-            sample_midi = self.midi_analyzer.analyze(sample_y, sr)
+            sample_analysis = self.detector.analyze_sample(sample_y, sr)
 
-            # Analyze song (just a portion for initial comparison)
-            song_duration = len(song_y) / sr
-            logger.info(f"Song duration: {song_duration:.2f} seconds")
-            
-            # Take first minute for initial analysis
-            analysis_duration = min(60, song_duration)
-            song_samples = int(analysis_duration * sr)
-            song_excerpt = song_y[:song_samples]
-            
-            logger.info("Analyzing song excerpt...")
-            song_spectral = self.spectral_analyzer.analyze(song_excerpt)
-            song_stems = self.stem_analyzer.analyze(song_excerpt)
-            song_midi = self.midi_analyzer.analyze(song_excerpt, sr)
+            # Find matches in song
+            logger.info("Searching for matches...")
+            matches = self.detector.find_in_track(sample_analysis, song_y, sr)
 
             # Format results
             output = "Analysis Results:\n\n"
             
             # Sample Analysis
             output += "Sample Analysis:\n"
-            output += f"Duration: {len(sample_y)/sr:.2f} seconds\n"
-            output += "Features extracted:\n"
-            for feature in sample_spectral:
+            output += f"Duration: {sample_analysis['metadata']['duration']:.2f} seconds\n"
+            
+            # Spectral Analysis
+            output += "\nSpectral Features:\n"
+            for feature in sample_analysis['full_spectral']:
                 if feature != 'metadata':
                     output += f"- {feature}\n"
             
+            # Stem Analysis
             output += "\nStem Analysis:\n"
-            for stem_name in sample_stems['stem_features']:
+            for stem_name in sample_analysis['stems']['stem_features']:
                 output += f"- {stem_name} stem extracted and analyzed\n"
-                
-            output += "\nMIDI Analysis:\n"
-            output += f"- Total notes detected: {sample_midi['metadata']['num_notes']}\n"
-            if sample_midi['metadata'].get('pitch_range'):
-                output += f"- Pitch range: {sample_midi['metadata']['pitch_range']['min']} to {sample_midi['metadata']['pitch_range']['max']}\n"
+                midi_data = sample_analysis['midi_per_stem'][stem_name]
+                output += f"  * Notes detected: {midi_data['metadata']['num_notes']}\n"
+                if midi_data['metadata'].get('pitch_range'):
+                    output += f"  * Pitch range: {midi_data['metadata']['pitch_range']['min']} to {midi_data['metadata']['pitch_range']['max']}\n"
             
-            # Song Analysis
-            output += f"\nSong Analysis (first {analysis_duration:.1f} seconds):\n"
-            output += f"Total Duration: {song_duration:.2f} seconds\n"
-            output += "Features extracted:\n"
-            for feature in song_spectral:
-                if feature != 'metadata':
-                    output += f"- {feature}\n"
+            # Match Results
+            if matches:
+                output += f"\nFound {len(matches)} potential matches:\n"
+                for i, match in enumerate(matches, 1):
+                    output += f"\nMatch {i}:\n"
+                    output += f"Time: {match['time_start']:.2f}s to {match['time_end']:.2f}s\n"
+                    output += f"Overall Confidence: {match['overall_confidence']:.2%}\n"
                     
-            output += "\nStem Analysis:\n"
-            for stem_name in song_stems['stem_features']:
-                output += f"- {stem_name} stem extracted and analyzed\n"
-                
-            output += "\nMIDI Analysis:\n"
-            output += f"- Total notes detected: {song_midi['metadata']['num_notes']}\n"
-            if song_midi['metadata'].get('pitch_range'):
-                output += f"- Pitch range: {song_midi['metadata']['pitch_range']['min']} to {song_midi['metadata']['pitch_range']['max']}\n"
-
-            # Compare MIDI data
-            midi_similarity = self.midi_analyzer.compare_midi(sample_midi, song_midi)
-            output += f"\nMIDI Similarity Score: {midi_similarity:.2%}\n"
+                    output += "Confidence per stem:\n"
+                    for stem, conf in match['confidence_per_stem'].items():
+                        output += f"- {stem}: {conf:.2%}\n"
+                        
+                    output += "MIDI matches per stem:\n"
+                    for stem, conf in match['midi_matches'].items():
+                        output += f"- {stem}: {conf:.2%}\n"
+            else:
+                output += "\nNo significant matches found."
 
             return output
 
@@ -110,13 +94,24 @@ class MusicDNAApp:
             description="""
             ## MusicDNA Sample Detection System
             
-            This system performs multi-level analysis of audio samples:
-            - Spectral Analysis (mel-spectrograms, MFCCs, chroma features)
-            - Stem Separation (drums, bass, vocals, other)
-            - MIDI Analysis (note events, pitch, timing)
-            - Feature Extraction per stem
+            This system performs granular multi-level analysis:
+            1. Full Spectral Analysis
+               - Mel-spectrograms
+               - MFCCs
+               - Chroma features
+               
+            2. Stem Separation
+               - Drums
+               - Bass
+               - Vocals
+               - Other instruments
+               
+            3. MIDI Analysis per stem
+               - Note events
+               - Pitch tracking
+               - Timing analysis
             
-            Upload a sample and a song to analyze their musical DNA.
+            Upload a sample and a song to analyze their musical DNA and find potential matches.
             """
         )
         return interface
