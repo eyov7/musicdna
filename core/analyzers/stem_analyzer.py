@@ -1,129 +1,197 @@
+"""
+Core stem analyzer implementing the natural decomposition approach.
+Uses stems as primary decomposition method, with dual fingerprinting (Visual + MIDI).
+"""
 import numpy as np
-import torch
 import logging
-from typing import Dict, List, Any
+from typing import Dict, Any, List, Optional, Tuple
 from .base_analyzer import BaseAnalyzer
+import librosa
+import torch
 from demucs.pretrained import get_model
-from demucs.apply import apply_model
-import torchaudio
+from basic_pitch import ICASSP_2022_MODEL_PATH
+from basic_pitch.inference import predict_with_model, load_model
 
 logger = logging.getLogger(__name__)
 
 class StemAnalyzer(BaseAnalyzer):
-    def __init__(self, device="cpu", model_name="htdemucs"):
-        """Initialize the stem analyzer with Demucs model."""
+    def __init__(self, sample_rate: int = 44100):
+        """Initialize the stem analyzer with models and configurations."""
         super().__init__()
-        self.device = device
-        self.model_name = model_name
-        self.stem_names = ['drums', 'bass', 'vocals', 'other']
-        self.sample_rate = 22050
+        self.sample_rate = sample_rate
+        self._initialize_models()
         
+    def _initialize_models(self):
+        """Initialize Demucs and Basic Pitch models with GPU support if available."""
         try:
-            self.model = get_model(model_name)
-            self.model.to(device)
-            logger.info(f"Loaded Demucs model {model_name} on {device}")
+            self.demucs_model = get_model('htdemucs')
+            self.demucs_model.eval()
+            if torch.cuda.is_available():
+                self.demucs_model.cuda()
+                logger.info("Using GPU for Demucs model")
+            else:
+                logger.info("Using CPU for Demucs model")
+                
+            self.basic_pitch_model = load_model(ICASSP_2022_MODEL_PATH)
+            logger.info("Basic Pitch model initialized successfully")
+            
         except Exception as e:
-            logger.error(f"Error loading Demucs model: {str(e)}")
-            raise
+            logger.error(f"Error initializing models: {str(e)}")
+            raise RuntimeError("Failed to initialize required models")
 
-    def validate_audio(self, audio: np.ndarray) -> bool:
-        """Validate the input audio."""
-        return isinstance(audio, np.ndarray) and len(audio.shape) <= 2
-
-    def analyze(self, audio: np.ndarray) -> Dict[str, Any]:
-        """Main analysis method required by BaseAnalyzer."""
-        if not self.validate_audio(audio):
-            logger.error("Invalid audio input")
-            return self._create_empty_result()
+    def create_fingerprint(self, audio: np.ndarray) -> Dict[str, Any]:
+        """
+        Create dual fingerprint (Visual + MIDI) of audio.
+        """
+        # Ensure correct audio format
+        if audio.ndim == 1:
+            audio = audio.reshape(1, -1)
             
-        try:
-            return self._analyze_impl(audio, self.sample_rate)
-        except Exception as e:
-            logger.error(f"Error in stem analysis: {str(e)}")
-            return self._create_empty_result()
-
-    def _create_empty_result(self) -> Dict[str, Any]:
-        """Create an empty result structure."""
+        # Generate Visual DNA (spectrogram)
+        visual_dna = self._create_visual_dna(audio)
+        
+        # Generate MIDI DNA if melodic content detected
+        if self._is_melodic(audio):
+            midi_dna = self._create_midi_dna(audio)
+        else:
+            midi_dna = None
+            
         return {
-            'stems': {
-                name: {
-                    'audio': np.zeros(1),
-                    'features': {
-                        'rms': 0.0,
-                        'peak': 0.0,
-                        'duration': 0.0,
-                        'zero_crossings': 0
-                    }
-                }
-                for name in self.stem_names
-            },
-            'metadata': {
-                'sample_rate': self.sample_rate,
-                'model': self.model_name,
-                'error': 'Analysis failed'
-            }
+            'visual_dna': visual_dna,
+            'midi_dna': midi_dna,
+            'length': audio.shape[-1]
         }
-
-    def _analyze_impl(self, audio_data: np.ndarray, sr: int) -> Dict[str, Any]:
-        """Internal implementation of stem analysis."""
-        # Ensure audio is 2D (batch, samples)
-        if len(audio_data.shape) == 1:
-            audio_data = audio_data.reshape(1, -1)
+    
+    def _create_visual_dna(self, audio: np.ndarray) -> np.ndarray:
+        """Generate spectrogram fingerprint."""
+        return librosa.feature.melspectrogram(
+            y=audio[0], 
+            sr=self.sample_rate,
+            n_mels=128,
+            fmax=8000
+        )
+    
+    def _create_midi_dna(self, audio: np.ndarray) -> List:
+        """Generate MIDI note pattern fingerprint."""
+        midi_data = predict_with_model(
+            self.basic_pitch_model,
+            audio[0],
+            self.sample_rate
+        )
+        return midi_data['pitch_list']
+    
+    def _is_melodic(self, audio: np.ndarray) -> bool:
+        """Determine if audio contains significant melodic content."""
+        flatness = librosa.feature.spectral_flatness(y=audio[0])[0]
+        return np.mean(flatness) < 0.3
+    
+    def separate_stems(self, audio: np.ndarray) -> Dict[str, np.ndarray]:
+        """
+        Decompose audio into stems (our natural decomposition).
+        Returns dict of stems: drums, bass, vocals, other
+        """
+        # Prepare audio for Demucs
+        audio_tensor = torch.tensor(audio)
+        if torch.cuda.is_available():
+            audio_tensor = audio_tensor.cuda()
+            
+        # Separate stems
+        stems = self.demucs_model.separate(audio_tensor)
         
-        # Convert to torch tensor
-        audio_tensor = torch.from_numpy(audio_data).to(self.device).float()
-        
-        # Resample if needed (Demucs expects 44.1kHz)
-        if sr != 44100:
-            resampler = torchaudio.transforms.Resample(sr, 44100).to(self.device)
-            audio_tensor = resampler(audio_tensor)
-        
-        # Apply model
-        with torch.no_grad():
-            separated = apply_model(self.model, audio_tensor, shifts=1, split=True)[0]
-            
-        # Process each stem
-        stems = {}
-        for i, name in enumerate(self.stem_names):
-            # Get stem audio
-            stem_audio = separated[i].cpu().numpy()
-            
-            # Resample back if needed
-            if sr != 44100:
-                resampler = torchaudio.transforms.Resample(44100, sr).to(self.device)
-                stem_audio = resampler(torch.from_numpy(stem_audio)).cpu().numpy()
-            
-            stem_audio = stem_audio.squeeze()
-            
-            # Calculate features
-            features = {
-                'rms': float(np.sqrt(np.mean(stem_audio**2))),
-                'peak': float(np.max(np.abs(stem_audio))),
-                'duration': float(len(stem_audio) / sr),
-                'zero_crossings': int(np.sum(np.abs(np.diff(np.signbit(stem_audio)))))
-            }
-            
-            stems[name] = {
-                'audio': stem_audio,
-                'features': features
-            }
-        
+        # Convert back to numpy and create dict
+        stem_names = ['drums', 'bass', 'vocals', 'other']
         return {
-            'stems': stems,
-            'metadata': {
-                'sample_rate': sr,
-                'num_stems': len(stems),
-                'stem_names': self.stem_names,
-                'model': self.model_name,
-                'duration': float(len(audio_data[0]) / sr)
-            }
+            name: stem.cpu().numpy() 
+            for name, stem in zip(stem_names, stems)
         }
-
-    def get_stem_weights(self) -> Dict[str, float]:
-        """Get the importance weights for each stem type."""
-        return {
-            'drums': 0.3,  # Rhythm and timing
-            'bass': 0.3,   # Foundation and harmony
-            'vocals': 0.2, # Melody and lyrics
-            'other': 0.2   # Additional elements
-        }
+    
+    def find_sample(self, sample: np.ndarray, 
+                   stems: Dict[str, np.ndarray],
+                   threshold: float = 0.85) -> List[Dict]:
+        """
+        Find sample occurrences in stems using dual fingerprinting.
+        """
+        # Create sample fingerprint
+        sample_fp = self.create_fingerprint(sample)
+        
+        # Determine primary stem type
+        sample_stems = self.separate_stems(sample)
+        primary_stem = max(
+            sample_stems.items(),
+            key=lambda x: np.sum(np.abs(x[1]))
+        )[0]
+        
+        # Search in primary stem
+        matches = []
+        target_stem = stems[primary_stem]
+        
+        # Slide through stem with overlap
+        window_size = sample_fp['length']
+        hop_length = window_size // 2
+        
+        for i in range(0, len(target_stem) - window_size, hop_length):
+            window = target_stem[:, i:i + window_size]
+            window_fp = self.create_fingerprint(window)
+            
+            # Compare fingerprints
+            confidence = self._compare_fingerprints(sample_fp, window_fp)
+            
+            if confidence > threshold:
+                matches.append({
+                    'start': i,
+                    'confidence': confidence,
+                    'stem': primary_stem
+                })
+        
+        return self._merge_matches(matches)
+    
+    def _compare_fingerprints(self, fp1: Dict, fp2: Dict) -> float:
+        """Compare two fingerprints using both Visual and MIDI DNA."""
+        # Compare spectrograms
+        visual_sim = np.corrcoef(
+            fp1['visual_dna'].flatten(),
+            fp2['visual_dna'].flatten()
+        )[0, 1]
+        
+        # If both have MIDI data, include MIDI similarity
+        if fp1['midi_dna'] and fp2['midi_dna']:
+            midi_sim = self._compare_midi(fp1['midi_dna'], fp2['midi_dna'])
+            return (visual_sim + midi_sim) / 2
+            
+        return visual_sim
+    
+    def _compare_midi(self, midi1: List, midi2: List) -> float:
+        """Compare MIDI note patterns."""
+        if not midi1 or not midi2:
+            return 0.0
+            
+        matches = 0
+        total = len(midi1)
+        
+        for note1 in midi1:
+            for note2 in midi2:
+                if abs(note1[1] - note2[1]) <= 1:  # Allow 1 semitone difference
+                    matches += 1
+                    break
+                    
+        return matches / total
+    
+    def _merge_matches(self, matches: List[Dict], 
+                      max_gap: int = 4410) -> List[Dict]:
+        """Merge nearby matches."""
+        if not matches:
+            return []
+            
+        merged = []
+        current = matches[0]
+        
+        for match in matches[1:]:
+            if match['start'] - (current['start'] + current['length']) <= max_gap:
+                if match['confidence'] > current['confidence']:
+                    current = match
+            else:
+                merged.append(current)
+                current = match
+                
+        merged.append(current)
+        return merged
