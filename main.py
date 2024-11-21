@@ -113,21 +113,27 @@ class MusicDNAApp:
             # Extract audio data and ensure it's numpy array
             sample_y, sr = sample_audio
             if not isinstance(sample_y, np.ndarray):
-                sample_y = np.array(sample_y)
+                sample_y = np.array(sample_y, dtype=np.float32)
             
             # Handle 0-dimensional arrays
             if sample_y.ndim == 0:
-                logger.warning("Received 0-dimensional sample array, converting to 1D")
-                sample_y = np.array([float(sample_y)])
+                logger.warning("Received 0-dimensional sample array, converting to 2D")
+                sample_y = np.array([[float(sample_y)]], dtype=np.float32)
+            elif sample_y.ndim == 1:
+                logger.info("Converting sample 1D array to 2D")
+                sample_y = np.array([sample_y], dtype=np.float32)
             
             song_y, _ = song_audio
             if not isinstance(song_y, np.ndarray):
-                song_y = np.array(song_y)
+                song_y = np.array(song_y, dtype=np.float32)
                 
             # Handle 0-dimensional arrays
             if song_y.ndim == 0:
-                logger.warning("Received 0-dimensional song array, converting to 1D")
-                song_y = np.array([float(song_y)])
+                logger.warning("Received 0-dimensional song array, converting to 2D")
+                song_y = np.array([[float(song_y)]], dtype=np.float32)
+            elif song_y.ndim == 1:
+                logger.info("Converting song 1D array to 2D")
+                song_y = np.array([song_y], dtype=np.float32)
 
             logger.info(f"Processing audio - Sample shape: {sample_y.shape}, Song shape: {song_y.shape}")
 
