@@ -35,6 +35,35 @@ class StemAnalyzer(BaseAnalyzer):
             logger.error(f"Error initializing models: {str(e)}")
             raise RuntimeError("Failed to initialize required models")
 
+    def analyze(self, audio: np.ndarray) -> Dict[str, Any]:
+        """
+        Implement the abstract analyze method.
+        Performs full stem-based analysis of the audio.
+        """
+        try:
+            # Separate into stems
+            stems = self.separate_stems(audio)
+            
+            # Analyze each stem
+            analysis = {}
+            for stem_name, stem_audio in stems.items():
+                analysis[stem_name] = {
+                    'fingerprint': self.create_fingerprint(stem_audio),
+                    'is_melodic': self._is_melodic(stem_audio)
+                }
+            
+            return {
+                'stems': analysis,
+                'primary_stem': max(
+                    stems.items(),
+                    key=lambda x: np.sum(np.abs(x[1]))
+                )[0]
+            }
+            
+        except Exception as e:
+            logger.error(f"Error in stem analysis: {str(e)}")
+            raise
+
     def create_fingerprint(self, audio: np.ndarray) -> Dict[str, Any]:
         """
         Create dual fingerprint (Visual + MIDI) of audio.
