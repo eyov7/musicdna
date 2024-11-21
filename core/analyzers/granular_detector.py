@@ -1,7 +1,7 @@
 import numpy as np
 import librosa
 import logging
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple, Optional, Any
 from .base_analyzer import BaseAnalyzer
 from .spectral_analyzer import SpectralAnalyzer
 from .stem_analyzer import StemAnalyzer
@@ -206,3 +206,23 @@ class GranularSampleDetector(BaseAnalyzer):
                 total += weight * confidence_dict[stem_name]['total']
                 
         return total
+
+    def analyze(self, audio: np.ndarray) -> Dict[str, Any]:
+        """
+        Analyze audio data using multi-level analysis.
+        This is the main method required by BaseAnalyzer.
+        
+        Args:
+            audio (np.ndarray): Audio signal to analyze
+            
+        Returns:
+            Dict[str, Any]: Multi-level analysis results
+        """
+        if not self.validate_audio(audio):
+            return {'error': 'Invalid audio input'}
+            
+        try:
+            return self.analyze_sample(audio, sr=self.sample_rate)
+        except Exception as e:
+            logger.error(f"Error in granular analysis: {str(e)}")
+            return {'error': str(e)}
