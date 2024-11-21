@@ -10,7 +10,7 @@ import librosa
 import torch
 from demucs.pretrained import get_model
 from basic_pitch import ICASSP_2022_MODEL_PATH
-from basic_pitch.inference import predict_with_model, load_model
+from basic_pitch.inference import estimate_notes
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +22,7 @@ class StemAnalyzer(BaseAnalyzer):
         self._initialize_models()
         
     def _initialize_models(self):
-        """Initialize Demucs and Basic Pitch models with GPU support if available."""
+        """Initialize Demucs model with GPU support if available."""
         try:
             self.demucs_model = get_model('htdemucs')
             self.demucs_model.eval()
@@ -32,9 +32,6 @@ class StemAnalyzer(BaseAnalyzer):
             else:
                 logger.info("Using CPU for Demucs model")
                 
-            self.basic_pitch_model = load_model(ICASSP_2022_MODEL_PATH)
-            logger.info("Basic Pitch model initialized successfully")
-            
         except Exception as e:
             logger.error(f"Error initializing models: {str(e)}")
             raise RuntimeError("Failed to initialize required models")
@@ -73,12 +70,18 @@ class StemAnalyzer(BaseAnalyzer):
     
     def _create_midi_dna(self, audio: np.ndarray) -> List:
         """Generate MIDI note pattern fingerprint."""
-        midi_data = predict_with_model(
-            self.basic_pitch_model,
-            audio[0],
-            self.sample_rate
-        )
-        return midi_data['pitch_list']
+        # Basic Pitch estimate_notes returns note events directly
+        note_events = estimate_notes(audio[0], self.sample_rate)
+        
+        # Convert note events to our format
+        notes = []
+        for note in note_events:
+            notes.append({
+                'time': note.start_time,
+                'pitch': note.pitch,
+                'confidence': note.confidence
+            })
+        return notes
     
     def _is_melodic(self, audio: np.ndarray) -> bool:
         """Determine if audio contains significant melodic content."""
@@ -170,11 +173,13 @@ class StemAnalyzer(BaseAnalyzer):
         
         for note1 in midi1:
             for note2 in midi2:
-                if abs(note1[1] - note2[1]) <= 1:  # Allow 1 semitone difference
+                # Compare pitch and timing
+                if (abs(note1['pitch'] - note2['pitch']) <= 1 and  # 1 semitone difference
+                    abs(note1['time'] - note2['time']) <= 0.05):   # 50ms timing difference
                     matches += 1
                     break
                     
-        return matches / total
+        return matches / total if total > 0 else 0.0
     
     def _merge_matches(self, matches: List[Dict], 
                       max_gap: int = 4410) -> List[Dict]:
