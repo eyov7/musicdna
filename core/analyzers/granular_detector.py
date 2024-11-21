@@ -15,15 +15,21 @@ class GranularSampleDetector(BaseAnalyzer):
             'vocals': 0.2,
             'other': 0.2
         }
+        self.sample_rate = 22050  # Default sample rate
 
     def analyze(self, audio: np.ndarray) -> Dict[str, Any]:
         """Analyze audio using granular detection."""
-        if not isinstance(audio, np.ndarray):
-            logger.error("Input audio must be a numpy array")
-            return self._create_empty_result()
-
         try:
+            # Convert to numpy array if needed
+            if not isinstance(audio, np.ndarray):
+                audio = np.array(audio)
+            
+            # Ensure 2D array
+            if len(audio.shape) == 1:
+                audio = audio.reshape(1, -1)
+                
             return self._analyze_impl(audio)
+            
         except Exception as e:
             logger.error(f"Error in sample analysis: {str(e)}")
             return self._create_empty_result()
@@ -42,10 +48,6 @@ class GranularSampleDetector(BaseAnalyzer):
 
     def _analyze_impl(self, audio_data: np.ndarray) -> Dict[str, Any]:
         """Internal implementation of granular analysis."""
-        # Ensure audio is 2D (batch, samples)
-        if len(audio_data.shape) == 1:
-            audio_data = audio_data.reshape(1, -1)
-
         features = self._extract_features(audio_data)
         
         return {
@@ -58,99 +60,135 @@ class GranularSampleDetector(BaseAnalyzer):
 
     def find_in_track(self, sample_analysis: Dict[str, Any], track_audio: np.ndarray, sr: int) -> List[Dict[str, Any]]:
         """Find sample occurrences in a track."""
-        matches = []
-        
-        # Ensure track_audio is 2D
-        if len(track_audio.shape) == 1:
-            track_audio = track_audio.reshape(1, -1)
-        
-        # Handle case where stem analysis is not available
-        if 'stems' not in sample_analysis:
-            logger.warning("Stem analysis not available - falling back to full audio analysis")
-            confidence = self._compare_audio(
-                sample_analysis.get('features', {}),
-                self._extract_features(track_audio)
-            )
-            if confidence > 0.7:  # Threshold for match
-                matches.append({
-                    'start_time': 0,
-                    'confidence': confidence,
-                    'transformations': self._detect_transformations(sample_analysis, track_audio)
-                })
-            return matches
-
-        # Process each stem if available
-        for stem_name, stem_weight in self.stem_weights.items():
-            if stem_name not in sample_analysis.get('stems', {}):
-                continue
-
-            stem_confidence = self._compare_stems(
-                sample_analysis['stems'][stem_name],
-                track_audio,
-                stem_weight
-            )
+        try:
+            # Convert track_audio to numpy array if needed
+            if not isinstance(track_audio, np.ndarray):
+                track_audio = np.array(track_audio)
+                
+            # Ensure 2D array
+            if len(track_audio.shape) == 1:
+                track_audio = track_audio.reshape(1, -1)
+                
+            matches = []
             
-            if stem_confidence > 0.7:  # Threshold for stem match
-                transformations = self._detect_transformations(
-                    sample_analysis['stems'][stem_name],
-                    track_audio
+            # Handle case where stem analysis is not available
+            if 'stems' not in sample_analysis:
+                logger.warning("Stem analysis not available - falling back to full audio analysis")
+                confidence = self._compare_audio(
+                    sample_analysis.get('features', {}),
+                    self._extract_features(track_audio)
                 )
-                matches.append({
-                    'stem': stem_name,
-                    'confidence': stem_confidence,
-                    'transformations': transformations
-                })
+                if confidence > 0.7:  # Threshold for match
+                    matches.append({
+                        'start_time': 0,
+                        'confidence': confidence,
+                        'transformations': self._detect_transformations(sample_analysis, track_audio)
+                    })
+                return matches
 
-        return matches
+            # Process each stem if available
+            for stem_name, stem_weight in self.stem_weights.items():
+                if stem_name not in sample_analysis.get('stems', {}):
+                    continue
+
+                stem_confidence = self._compare_stems(
+                    sample_analysis['stems'][stem_name],
+                    track_audio,
+                    stem_weight
+                )
+                
+                if stem_confidence > 0.7:  # Threshold for stem match
+                    transformations = self._detect_transformations(
+                        sample_analysis['stems'][stem_name],
+                        track_audio
+                    )
+                    matches.append({
+                        'stem': stem_name,
+                        'confidence': stem_confidence,
+                        'transformations': transformations
+                    })
+
+            return matches
+            
+        except Exception as e:
+            logger.error(f"Error in find_in_track: {str(e)}")
+            return []
 
     def _extract_features(self, audio: np.ndarray) -> Dict[str, Any]:
         """Extract audio features for comparison."""
-        if len(audio.shape) == 1:
-            audio = audio.reshape(1, -1)
-            
-        return {
-            'rms': float(np.sqrt(np.mean(audio**2))),
-            'peak': float(np.max(np.abs(audio))),
-            'duration': float(len(audio[0]) / self.sample_rate),
-            'zero_crossings': int(np.sum(np.abs(np.diff(np.signbit(audio[0])))))
-        }
+        try:
+            if not isinstance(audio, np.ndarray):
+                audio = np.array(audio)
+                
+            if len(audio.shape) == 1:
+                audio = audio.reshape(1, -1)
+                
+            return {
+                'rms': float(np.sqrt(np.mean(audio**2))),
+                'peak': float(np.max(np.abs(audio))),
+                'duration': float(len(audio[0]) / self.sample_rate),
+                'zero_crossings': int(np.sum(np.abs(np.diff(np.signbit(audio[0])))))
+            }
+        except Exception as e:
+            logger.error(f"Error in feature extraction: {str(e)}")
+            return {
+                'rms': 0.0,
+                'peak': 0.0,
+                'duration': 0.0,
+                'zero_crossings': 0
+            }
 
     def _compare_audio(self, features1: Dict[str, Any], features2: Dict[str, Any]) -> float:
         """Compare two sets of audio features."""
-        if not features1 or not features2:
-            return 0.0
+        try:
+            if not features1 or not features2:
+                return 0.0
 
-        # Simple feature comparison
-        rms_diff = abs(features1.get('rms', 0) - features2.get('rms', 0))
-        peak_diff = abs(features1.get('peak', 0) - features2.get('peak', 0))
-        
-        # Normalize differences
-        confidence = 1.0 - (rms_diff + peak_diff) / 2
-        return max(0.0, min(1.0, confidence))
+            # Simple feature comparison
+            rms_diff = abs(features1.get('rms', 0) - features2.get('rms', 0))
+            peak_diff = abs(features1.get('peak', 0) - features2.get('peak', 0))
+            
+            # Normalize differences
+            confidence = 1.0 - (rms_diff + peak_diff) / 2
+            return max(0.0, min(1.0, confidence))
+            
+        except Exception as e:
+            logger.error(f"Error in audio comparison: {str(e)}")
+            return 0.0
 
     def _compare_stems(self, stem1: Dict[str, Any], stem2: np.ndarray, weight: float) -> float:
         """Compare two stems with weighting."""
-        features1 = stem1.get('features', {})
-        features2 = self._extract_features(stem2)
-        
-        base_confidence = self._compare_audio(features1, features2)
-        return base_confidence * weight
+        try:
+            features1 = stem1.get('features', {})
+            features2 = self._extract_features(stem2)
+            
+            base_confidence = self._compare_audio(features1, features2)
+            return base_confidence * weight
+            
+        except Exception as e:
+            logger.error(f"Error in stem comparison: {str(e)}")
+            return 0.0
 
     def _detect_transformations(self, sample: Dict[str, Any], track: np.ndarray) -> List[str]:
         """Detect audio transformations between sample and track."""
-        transformations = []
-        
-        # Basic transformation detection
-        sample_features = sample.get('features', {})
-        track_features = self._extract_features(track)
-        
-        # Detect pitch shift
-        if abs(sample_features.get('zero_crossings', 0) - track_features.get('zero_crossings', 0)) > 100:
-            transformations.append('pitch_shift')
+        try:
+            transformations = []
             
-        # Detect time stretch
-        duration_ratio = track_features.get('duration', 0) / sample_features.get('duration', 1)
-        if abs(1 - duration_ratio) > 0.1:  # 10% threshold
-            transformations.append('time_stretch')
+            # Basic transformation detection
+            sample_features = sample.get('features', {})
+            track_features = self._extract_features(track)
             
-        return transformations
+            # Detect pitch shift
+            if abs(sample_features.get('zero_crossings', 0) - track_features.get('zero_crossings', 0)) > 100:
+                transformations.append('pitch_shift')
+                
+            # Detect time stretch
+            duration_ratio = track_features.get('duration', 0) / sample_features.get('duration', 1)
+            if abs(1 - duration_ratio) > 0.1:  # 10% threshold
+                transformations.append('time_stretch')
+                
+            return transformations
+            
+        except Exception as e:
+            logger.error(f"Error in transformation detection: {str(e)}")
+            return []

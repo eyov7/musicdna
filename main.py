@@ -110,8 +110,16 @@ class MusicDNAApp:
             if sample_audio is None or song_audio is None:
                 return "⚠️ Please provide both a sample and a song audio file."
 
+            # Extract audio data and ensure it's numpy array
             sample_y, sr = sample_audio
+            if not isinstance(sample_y, np.ndarray):
+                sample_y = np.array(sample_y)
+            
             song_y, _ = song_audio
+            if not isinstance(song_y, np.ndarray):
+                song_y = np.array(song_y)
+
+            logger.info(f"Processing audio - Sample shape: {sample_y.shape}, Song shape: {song_y.shape}")
 
             # Analyze sample
             sample_analysis = self.detector.analyze(sample_y)
