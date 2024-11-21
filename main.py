@@ -31,12 +31,55 @@ class MusicDNAApp:
             outputs=gr.Textbox(label="Analysis Results"),
             title="🧬 MusicDNA - Advanced Sample Detection",
             description="""
-            ## 🎵 Upload a sample and a full song to detect where the sample appears
-            
-            This tool uses advanced audio analysis to:
-            - 🎼 Detect samples across different musical elements
-            - 🔍 Identify transformations (pitch shifts, time stretches)
-            - 📊 Provide confidence scores for matches
+            ## 🎵 MusicDNA Sample Detection System
+
+            This system performs granular multi-level analysis to find samples and their transformations:
+
+            ### 🔍 Analysis Levels:
+
+            1. 📊 Full Audio Analysis
+               - Spectral features
+               - Energy distribution
+               - Overall characteristics
+
+            2. 🎼 Stem Separation
+               - 🥁 Drums
+               - 🎸 Bass
+               - 🎤 Vocals
+               - 🎹 Other instruments
+
+            3. 🎵 Per-Stem Analysis
+               - Spectral matching
+               - MIDI pattern detection
+               - Feature comparison
+
+            4. 🔄 Transformation Detection
+               - Pitch shifting
+               - Time stretching
+               - Audio modifications
+
+            ### 💡 How it Works:
+
+            1. **Sample Analysis**: Your sample is analyzed across multiple dimensions:
+               - Spectral characteristics
+               - Stem separation
+               - MIDI patterns
+               - Audio features
+
+            2. **Track Analysis**: The full song is processed similarly
+
+            3. **Pattern Matching**: Advanced algorithms compare the sample and track:
+               - Multi-level feature matching
+               - Transformation detection
+               - Confidence scoring
+
+            4. **Results**: You get detailed insights about:
+               - Where samples appear
+               - How they've been modified
+               - Confidence levels
+               - Stem-specific matches
+
+            Upload a sample and a song to analyze their musical DNA! 🎵
             """,
             theme=gr.themes.Soft(),
             allow_flagging="never"
@@ -80,7 +123,15 @@ class MusicDNAApp:
                 return "❌ No matches found in the track."
 
             # Format results
-            results = ["🎯 Found potential matches:\n"]
+            results = ["🎵 MusicDNA Analysis Results 🎵\n"]
+            
+            # Sample Analysis Summary
+            results.append("\n📊 Sample Analysis:")
+            results.append(f"Duration: {self.format_time(sample_analysis['metadata']['duration'])}")
+            results.append(f"Sample Rate: {sample_analysis['metadata']['sample_rate']} Hz\n")
+            
+            # Match Results
+            results.append("🎯 Found potential matches:\n")
             
             for i, match in enumerate(matches, 1):
                 confidence = match.get('confidence', 0) * 100
@@ -105,9 +156,9 @@ class MusicDNAApp:
 
 def main():
     app = MusicDNAApp()
+    app.interface.queue()  # Use queue instead of enable_queue
     app.interface.launch(
-        share=False,
-        enable_queue=False
+        share=False
     )
 
 if __name__ == "__main__":

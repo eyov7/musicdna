@@ -42,7 +42,7 @@ class GranularSampleDetector(BaseAnalyzer):
 
     def _analyze_impl(self, audio_data: np.ndarray) -> Dict[str, Any]:
         """Internal implementation of granular analysis."""
-        # Ensure audio is the right shape
+        # Ensure audio is 2D (batch, samples)
         if len(audio_data.shape) == 1:
             audio_data = audio_data.reshape(1, -1)
 
@@ -59,6 +59,10 @@ class GranularSampleDetector(BaseAnalyzer):
     def find_in_track(self, sample_analysis: Dict[str, Any], track_audio: np.ndarray, sr: int) -> List[Dict[str, Any]]:
         """Find sample occurrences in a track."""
         matches = []
+        
+        # Ensure track_audio is 2D
+        if len(track_audio.shape) == 1:
+            track_audio = track_audio.reshape(1, -1)
         
         # Handle case where stem analysis is not available
         if 'stems' not in sample_analysis:
@@ -101,6 +105,9 @@ class GranularSampleDetector(BaseAnalyzer):
 
     def _extract_features(self, audio: np.ndarray) -> Dict[str, Any]:
         """Extract audio features for comparison."""
+        if len(audio.shape) == 1:
+            audio = audio.reshape(1, -1)
+            
         return {
             'rms': float(np.sqrt(np.mean(audio**2))),
             'peak': float(np.max(np.abs(audio))),
