@@ -1,33 +1,70 @@
 import numpy as np
-import basic_pitch
-from basic_pitch.inference import predict
 import logging
+from typing import Dict, Any, Optional
 from .base_analyzer import BaseAnalyzer
+from basic_pitch.inference import predict
 
 logger = logging.getLogger(__name__)
 
 class MIDIAnalyzer(BaseAnalyzer):
-    def __init__(self, device="cpu"):
+    def __init__(self):
+        """Initialize the MIDI analyzer."""
         super().__init__()
-        self.device = device
-        logger.info(f"Initialized MIDI Analyzer on device: {device}")
+        self._check_dependencies()
 
-    def analyze(self, audio_data, sr=22050):
-        """
-        Analyze audio data and extract MIDI information using Basic Pitch.
-        
-        Args:
-            audio_data (np.ndarray): Audio data to analyze
-            sr (int): Sample rate of the audio
-            
-        Returns:
-            dict: Dictionary containing MIDI features and metadata
-        """
+    def _check_dependencies(self) -> None:
+        """Check if required dependencies are available."""
         try:
-            # Get MIDI predictions
+            import tensorflow as tf
+            self.tf_available = True
+            logger.info("TensorFlow is available for MIDI analysis")
+        except ImportError:
+            self.tf_available = False
+            logger.warning("TensorFlow not available. MIDI analysis will be limited.")
+
+    def analyze(self, audio: np.ndarray, sr: int = 22050) -> Dict[str, Any]:
+        """Analyze audio and extract MIDI features."""
+        if not isinstance(audio, np.ndarray):
+            logger.error("Input audio must be a numpy array")
+            return self._create_empty_result()
+
+        try:
+            return self._analyze_impl(audio, sr)
+        except Exception as e:
+            logger.error(f"Error in MIDI analysis: {str(e)}")
+            return self._create_empty_result()
+
+    def _create_empty_result(self) -> Dict[str, Any]:
+        """Create an empty result structure."""
+        return {
+            'midi_data': None,
+            'note_events': [],
+            'metadata': {
+                'num_notes': 0,
+                'duration': 0,
+                'pitch_range': {
+                    'min': 0,
+                    'max': 0
+                },
+                'error': 'Analysis failed or dependencies missing'
+            }
+        }
+
+    def _analyze_impl(self, audio_data: np.ndarray, sr: int) -> Dict[str, Any]:
+        """Internal implementation of MIDI analysis."""
+        if not self.tf_available:
+            logger.warning("TensorFlow not available - returning empty MIDI analysis")
+            return self._create_empty_result()
+
+        # Ensure audio is the right shape
+        if len(audio_data.shape) == 1:
+            audio_data = audio_data.reshape(1, -1)
+
+        try:
+            # Run Basic Pitch prediction
             midi_data, notes, _ = predict(audio_data, sr)
             
-            # Extract key features from the MIDI data
+            # Extract relevant features
             note_events = []
             for note in notes:
                 note_event = {
@@ -56,14 +93,10 @@ class MIDIAnalyzer(BaseAnalyzer):
             return features
             
         except Exception as e:
-            logger.error(f"Error in MIDI analysis: {str(e)}")
-            return {
-                'midi_data': None,
-                'note_events': [],
-                'metadata': {'error': str(e)}
-            }
+            logger.error(f"Error in MIDI prediction: {str(e)}")
+            return self._create_empty_result()
 
-    def compare_midi(self, midi1, midi2, tolerance=0.1):
+    def compare_midi(self, midi1: Dict[str, Any], midi2: Dict[str, Any], tolerance: float = 0.1) -> float:
         """
         Compare two MIDI feature sets for similarity.
         
