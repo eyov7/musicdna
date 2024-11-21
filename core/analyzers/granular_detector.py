@@ -117,7 +117,7 @@ class GranularSampleDetector(BaseAnalyzer):
             }
             
             # Compare at each level
-            for stem_name in ['drums', 'bass', 'vocals', 'other']:
+            for stem_name in self.stem_analyzer.stem_names:
                 stem_confidence = self._calculate_stem_confidence(
                     sample_analysis['stems'][stem_name],
                     window_analysis['stems'][stem_name]
@@ -144,13 +144,22 @@ class GranularSampleDetector(BaseAnalyzer):
     def _calculate_stem_confidence(self, sample_stem: Dict, window_stem: Dict) -> Dict:
         """Calculate detailed confidence scores for a stem"""
         # Spectral similarity (50%)
-        spectral_conf = self.compare_spectrograms(sample_stem['spectral'], window_stem['spectral'])
+        spectral_conf = self.compare_spectrograms(
+            sample_stem['spectral'], 
+            window_stem['spectral']
+        )
         
         # MIDI similarity (30%)
-        midi_conf = self.midi_analyzer.compare_midi(sample_stem['midi'], window_stem['midi'])
+        midi_conf = self.midi_analyzer.compare_midi(
+            sample_stem.get('midi', {}), 
+            window_stem.get('midi', {})
+        )
         
         # Feature similarity (20%)
-        feature_conf = self._compare_features(sample_stem['features'], window_stem['features'])
+        feature_conf = self._compare_features(
+            sample_stem['features'],
+            window_stem['features']
+        )
         
         total = 0.5 * spectral_conf + 0.3 * midi_conf + 0.2 * feature_conf
         
@@ -160,7 +169,7 @@ class GranularSampleDetector(BaseAnalyzer):
             'features': feature_conf,
             'total': total
         }
-        
+
     def _detect_transformations(self, sample_stem: Dict, window_stem: Dict) -> Dict:
         """Detect potential audio transformations"""
         transformations = {}

@@ -11,15 +11,12 @@ logger = logging.getLogger(__name__)
 
 class StemAnalyzer(BaseAnalyzer):
     def __init__(self, device="cpu", model_name="htdemucs"):
-        """
-        Initialize the stem analyzer with Demucs model.
-        
-        Args:
-            device: Device to run the model on ("cpu" or "cuda")
-            model_name: Name of the Demucs model to use
-        """
+        """Initialize the stem analyzer with Demucs model."""
         super().__init__()
         self.device = device
+        self.model_name = model_name
+        self.stem_names = ['drums', 'bass', 'vocals', 'other']
+        
         try:
             self.model = get_model(model_name)
             self.model.to(device)
@@ -27,18 +24,9 @@ class StemAnalyzer(BaseAnalyzer):
         except Exception as e:
             logger.error(f"Error loading Demucs model: {str(e)}")
             raise
-            
+
     def separate(self, audio_data: np.ndarray, sr: int = 22050) -> Dict[str, np.ndarray]:
-        """
-        Separate audio into stems using Demucs.
-        
-        Args:
-            audio_data: Audio data to separate
-            sr: Sample rate
-            
-        Returns:
-            Dictionary of separated stems
-        """
+        """Separate audio into stems using Demucs."""
         try:
             # Convert to torch tensor and reshape for Demucs
             if len(audio_data.shape) == 1:
@@ -52,37 +40,27 @@ class StemAnalyzer(BaseAnalyzer):
             
             # Apply model
             with torch.no_grad():
-                separated = apply_model(self.model, audio_tensor, shifts=1, split=True)[0]
+                separated = apply_model(self.model, audio_tensor, shifts=1, split=True)
+                separated = separated[0]  # Get first batch
             
             # Convert back to numpy and original sample rate
             stems = {}
-            stem_names = ['drums', 'bass', 'vocals', 'other']
-            
-            for i, name in enumerate(stem_names):
+            for i, name in enumerate(self.stem_names):
                 stem_audio = separated[i].cpu().numpy()
                 if sr != 44100:
                     # Resample back to original rate
                     resampler = torchaudio.transforms.Resample(44100, sr).to(self.device)
                     stem_audio = resampler(torch.from_numpy(stem_audio)).cpu().numpy()
                 stems[name] = stem_audio.squeeze()
-                
+            
             return stems
             
         except Exception as e:
             logger.error(f"Error in stem separation: {str(e)}")
-            return {}
-            
+            return {name: np.zeros(1) for name in self.stem_names}  # Return empty stems on error
+
     def analyze(self, audio_data: np.ndarray, sr: int = 22050) -> Dict:
-        """
-        Analyze audio by separating into stems and extracting features.
-        
-        Args:
-            audio_data: Audio data to analyze
-            sr: Sample rate
-            
-        Returns:
-            Dictionary containing stems and features
-        """
+        """Analyze audio by separating into stems and extracting features."""
         try:
             # Separate into stems
             stems = self.separate(audio_data, sr)
@@ -91,36 +69,35 @@ class StemAnalyzer(BaseAnalyzer):
             stem_features = {}
             for name, stem_audio in stems.items():
                 features = {
-                    'rms': np.sqrt(np.mean(stem_audio**2)),
-                    'peak': np.max(np.abs(stem_audio)),
-                    'duration': len(stem_audio) / sr,
-                    'zero_crossings': np.sum(np.abs(np.diff(np.signbit(stem_audio))))
+                    'rms': float(np.sqrt(np.mean(stem_audio**2))),
+                    'peak': float(np.max(np.abs(stem_audio))),
+                    'duration': float(len(stem_audio) / sr),
+                    'zero_crossings': int(np.sum(np.abs(np.diff(np.signbit(stem_audio)))))
                 }
-                stem_features[name] = features
+                stem_features[name] = {
+                    'audio': stem_audio,
+                    'features': features
+                }
             
             return {
-                'stems': stems,  # Raw separated audio
-                'stem_features': stem_features,  # Basic features per stem
+                'stems': stem_features,
                 'metadata': {
                     'sample_rate': sr,
                     'num_stems': len(stems),
-                    'stem_names': list(stems.keys())
+                    'stem_names': self.stem_names,
+                    'model': self.model_name
                 }
             }
             
         except Exception as e:
             logger.error(f"Error in stem analysis: {str(e)}")
             return {
-                'stems': {},
-                'stem_features': {},
+                'stems': {name: {'audio': np.zeros(1), 'features': {}} for name in self.stem_names},
                 'metadata': {'error': str(e)}
             }
-            
+
     def get_stem_weights(self) -> Dict[str, float]:
-        """
-        Get the importance weights for each stem type.
-        Used in confidence calculations.
-        """
+        """Get the importance weights for each stem type."""
         return {
             'drums': 0.3,  # Rhythm and timing
             'bass': 0.3,   # Foundation and harmony
