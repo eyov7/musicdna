@@ -10,4 +10,5 @@ scipy>=1.7.0
 scikit-learn>=1.0.0  # Added for DBSCAN clustering
 logging>=0.5.1.2
 typing>=3.7.4
-plotly>=5.18.0
+plotly==5.18.0
+kaleido  # Required for static plotly image export
