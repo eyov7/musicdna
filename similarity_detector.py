@@ -6,6 +6,7 @@ from typing import List, Dict
 from frequency_analyzer import FrequencyAnalyzer
 from pattern_analyzer import PatternAnalyzer
 from advanced_analysis import MixAnalyzer
+from visualization import AudioVisualizer
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +38,7 @@ class SimilarityDetector:
             max_pattern_gap=0.5,
             similarity_threshold=0.85
         )
+        self.visualizer = AudioVisualizer()
 
     def sliding_window_similarity(self, 
                                 sample_chroma: np.ndarray,
@@ -255,11 +257,38 @@ class SimilarityDetector:
                 hop_length=512
             )
             
+            # Create visualizations
+            freq_viz = self.visualizer.plot_frequency_bands(
+                sample=sample_audio,
+                song=song_audio,
+                freq_weights=freq_weights,
+                matches=final_matches
+            )
+            
+            pattern_viz = self.visualizer.plot_pattern_map(
+                song=song_audio,
+                patterns=self.pattern_analyzer.get_patterns(),
+                matches=final_matches
+            )
+            
+            mix_viz = self.visualizer.plot_mix_density(
+                density=density,
+                matches=final_matches,
+                confidence_scores=confidence_scores
+            )
+            
             # Sort matches by confidence
             final_matches.sort(key=lambda x: x['confidence'], reverse=True)
             
             logger.info(f"Found {len(final_matches)} matches after all analysis")
-            return final_matches
+            return {
+                'matches': final_matches,
+                'visualizations': {
+                    'frequency': freq_viz,
+                    'pattern': pattern_viz,
+                    'mix_density': mix_viz
+                }
+            }
             
         except Exception as e:
             logger.error(f"Error in match detection: {str(e)}")

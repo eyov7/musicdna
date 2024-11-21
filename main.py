@@ -6,6 +6,7 @@ import soundfile as sf
 import os
 from tempfile import NamedTemporaryFile
 import matplotlib.pyplot as plt
+import plotly.graph_objects as go
 from demucs_handler import DemucsProcessor
 from basic_pitch_handler import BasicPitchConverter
 from similarity_detector import SimilarityDetector
@@ -53,20 +54,16 @@ def create_similarity_plot(similarity_scores: np.ndarray, matches, sample_length
         plt.close()
         return temp_file.name
 
-def analyze_sample(sample_audio, full_song):
-    """Find occurrences of sample in the full song"""
-    logger.info("Starting sample analysis")
-    logger.info(f"Sample audio path: {sample_audio}")
-    logger.info(f"Full song path: {full_song}")
-    
+def process_audio(sample_path: str, song_path: str) -> dict:
+    """Process audio files and return matches with visualizations"""
     try:
         # Load and process audio files
-        sample_y, sr = librosa.load(sample_audio)
-        song_y, _ = librosa.load(full_song, sr=sr)
+        sample_y, sr = librosa.load(sample_path)
+        song_y, _ = librosa.load(song_path, sr=sr)
         
         # Get stems for both
-        sample_stems, _ = demucs.separate_stems(sample_audio)
-        song_stems, _ = demucs.separate_stems(full_song)
+        sample_stems, _ = demucs.separate_stems(sample_path)
+        song_stems, _ = demucs.separate_stems(song_path)
         
         # Extract features (focusing on harmonic content from 'other' stem)
         sample_chroma = librosa.feature.chroma_cqt(
@@ -101,55 +98,65 @@ def analyze_sample(sample_audio, full_song):
             song_length
         )
         
-        # Prepare results
-        results = {
-            "Sample Length": f"{sample_length:.2f} seconds",
-            "Song Length": f"{song_length:.2f} seconds",
-            "Matches Found": len(matches),
-            "Detailed Matches": [
-                {
-                    "Start Time": f"{m.start_time:.2f}s",
-                    "End Time": f"{m.end_time:.2f}s",
-                    "Duration": f"{m.end_time - m.start_time:.2f}s",
-                    "Confidence": f"{m.confidence:.2%}",
-                    "Context Score": f"{m.context_score:.2%}"
-                }
-                for m in matches
-            ]
+        # Format output
+        output_text = "Found matches:\n"
+        for match in matches:
+            output_text += f"Time: {match.start_time:.2f}s, Duration: {match.end_time - match.start_time:.2f}s, Confidence: {match.confidence:.2%}\n"
+        
+        # Create interactive visualizations
+        fig_freq = go.Figure(data=[go.Scatter(x=np.linspace(0, song_length, len(similarity_scores)), y=similarity_scores)])
+        fig_freq.update_layout(title='Frequency Analysis', xaxis_title='Time (seconds)', yaxis_title='Similarity Score')
+        
+        fig_pattern = go.Figure(data=[go.Scatter(x=np.linspace(0, song_length, len(similarity_scores)), y=similarity_scores)])
+        fig_pattern.update_layout(title='Pattern Analysis', xaxis_title='Time (seconds)', yaxis_title='Similarity Score')
+        
+        fig_mix = go.Figure(data=[go.Scatter(x=np.linspace(0, song_length, len(similarity_scores)), y=similarity_scores)])
+        fig_mix.update_layout(title='Mix Density Analysis', xaxis_title='Time (seconds)', yaxis_title='Similarity Score')
+        
+        return {
+            "output": output_text,
+            "freq_viz": fig_freq,
+            "pattern_viz": fig_pattern,
+            "mix_viz": fig_mix
         }
-        
-        logger.info("Analysis completed successfully")
-        logger.info(f"Results: {results}")
-        
-        return (
-            results,
-            sample_audio,
-            full_song,
-            plot_path
-        )
         
     except Exception as e:
         logger.error(f"Error in sample analysis: {str(e)}")
         import traceback
         logger.error(traceback.format_exc())
-        return {"error": str(e)}, None, None, None
+        return {"error": str(e)}
+
+def create_interface():
+    """Create Gradio interface"""
+    with gr.Blocks() as interface:
+        gr.Markdown("# MusicDNA - Advanced Sample Detection")
+        
+        with gr.Row():
+            with gr.Column():
+                sample_input = gr.Audio(label="Upload Sample")
+                song_input = gr.Audio(label="Upload Full Song")
+                analyze_btn = gr.Button("Analyze")
+            
+            with gr.Column():
+                output_text = gr.Textbox(label="Detection Results")
+                
+        with gr.Row():
+            freq_plot = gr.Plot(label="Frequency Analysis")
+            pattern_plot = gr.Plot(label="Pattern Analysis")
+            
+        with gr.Row():
+            mix_plot = gr.Plot(label="Mix Density Analysis")
+        
+        analyze_btn.click(
+            fn=process_audio,
+            inputs=[sample_input, song_input],
+            outputs=[output_text, freq_plot, pattern_plot, mix_plot]
+        )
+        
+    return interface
 
 # Create Gradio interface
-demo = gr.Interface(
-    fn=analyze_sample,
-    inputs=[
-        gr.Audio(label="Upload Sample (5-15 seconds)", type="filepath"),
-        gr.Audio(label="Upload Full Song", type="filepath")
-    ],
-    outputs=[
-        gr.JSON(label="Analysis Results"),
-        gr.Audio(label="Sample Playback"),
-        gr.Audio(label="Song Playback"),
-        gr.Image(label="Sample Detection Timeline")
-    ],
-    title="Sample Detection Demo",
-    description="Upload a sample and a song to find where the sample appears in the song"
-)
+demo = create_interface()
 
 # For Lightning AI
 app = demo.app
