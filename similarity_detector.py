@@ -2,11 +2,7 @@ import numpy as np
 import librosa
 import logging
 from dataclasses import dataclass
-from typing import List, Dict
-from frequency_analyzer import FrequencyAnalyzer
-from pattern_analyzer import PatternAnalyzer
-from advanced_analysis import MixAnalyzer
-from visualization import AudioVisualizer
+from typing import List, Dict, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -204,7 +200,7 @@ class SimilarityDetector:
     def detect_matches(self,
                       sample_audio: np.ndarray,
                       song_audio: np.ndarray,
-                      stems: Dict[str, np.ndarray],
+                      stems: Optional[Dict[str, np.ndarray]] = None,
                       sr: int = 44100) -> List[Dict]:
         """
         Detect sample matches using multiple analysis methods
@@ -218,7 +214,10 @@ class SimilarityDetector:
             )
             
             # 2. Calculate mix density and dynamic threshold
-            density, threshold = self.mix_analyzer.analyze_section(stems)
+            if stems is not None:
+                density, threshold = self.mix_analyzer.analyze_section(stems)
+            else:
+                density, threshold = np.ones(len(song_features)), np.ones(len(song_features))
             
             # 3. Get raw confidence scores using weighted features
             confidence_scores = self.calculate_similarity(sample_features, song_features)
