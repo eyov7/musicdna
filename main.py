@@ -60,10 +60,17 @@ def create_interface():
             gr.Textbox(label="Detection Results", lines=10)
         ],
         title="MusicDNA - Sample Detection",
-        description="Upload a sample and a song to find where the sample appears in the song",
-        examples=[
-            ["path/to/example_sample.mp3", "path/to/example_song.mp3"]
-        ]
+        description="""## Advanced Sample Detection System
+        
+        Upload a sample audio clip and a full song to find where the sample appears in the song.
+        
+        Instructions:
+        1. Upload a short sample (5-15 seconds)
+        2. Upload the full song to analyze
+        3. Click submit to find matches
+        
+        The system will analyze the audio and show where the sample appears in the song.
+        """
     )
     return interface
 
