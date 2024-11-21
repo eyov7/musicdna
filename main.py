@@ -2,7 +2,7 @@ import gradio as gr
 import numpy as np
 import librosa
 import logging
-from core.analyzers import SpectralAnalyzer, StemAnalyzer
+from core.analyzers import SpectralAnalyzer, StemAnalyzer, MIDIAnalyzer
 import torch
 
 # Configure logging
@@ -11,10 +11,12 @@ logger = logging.getLogger(__name__)
 
 class MusicDNAApp:
     def __init__(self):
+        device = "cuda" if torch.cuda.is_available() else "cpu"
         # Initialize analyzers
         self.spectral_analyzer = SpectralAnalyzer()
-        self.stem_analyzer = StemAnalyzer(device="cuda" if torch.cuda.is_available() else "cpu")
-        logger.info(f"Initialized analyzers. Using device: {self.stem_analyzer.device}")
+        self.stem_analyzer = StemAnalyzer(device=device)
+        self.midi_analyzer = MIDIAnalyzer(device=device)
+        logger.info(f"Initialized analyzers. Using device: {device}")
 
     def process_audio(self, sample_path: str, song_path: str) -> str:
         """
@@ -30,6 +32,7 @@ class MusicDNAApp:
             logger.info("Analyzing sample...")
             sample_spectral = self.spectral_analyzer.analyze(sample_y)
             sample_stems = self.stem_analyzer.analyze(sample_y)
+            sample_midi = self.midi_analyzer.analyze(sample_y, sr)
 
             # Analyze song (just a portion for initial comparison)
             song_duration = len(song_y) / sr
@@ -43,6 +46,7 @@ class MusicDNAApp:
             logger.info("Analyzing song excerpt...")
             song_spectral = self.spectral_analyzer.analyze(song_excerpt)
             song_stems = self.stem_analyzer.analyze(song_excerpt)
+            song_midi = self.midi_analyzer.analyze(song_excerpt, sr)
 
             # Format results
             output = "Analysis Results:\n\n"
@@ -58,6 +62,11 @@ class MusicDNAApp:
             output += "\nStem Analysis:\n"
             for stem_name in sample_stems['stem_features']:
                 output += f"- {stem_name} stem extracted and analyzed\n"
+                
+            output += "\nMIDI Analysis:\n"
+            output += f"- Total notes detected: {sample_midi['metadata']['num_notes']}\n"
+            if sample_midi['metadata'].get('pitch_range'):
+                output += f"- Pitch range: {sample_midi['metadata']['pitch_range']['min']} to {sample_midi['metadata']['pitch_range']['max']}\n"
             
             # Song Analysis
             output += f"\nSong Analysis (first {analysis_duration:.1f} seconds):\n"
@@ -70,6 +79,15 @@ class MusicDNAApp:
             output += "\nStem Analysis:\n"
             for stem_name in song_stems['stem_features']:
                 output += f"- {stem_name} stem extracted and analyzed\n"
+                
+            output += "\nMIDI Analysis:\n"
+            output += f"- Total notes detected: {song_midi['metadata']['num_notes']}\n"
+            if song_midi['metadata'].get('pitch_range'):
+                output += f"- Pitch range: {song_midi['metadata']['pitch_range']['min']} to {song_midi['metadata']['pitch_range']['max']}\n"
+
+            # Compare MIDI data
+            midi_similarity = self.midi_analyzer.compare_midi(sample_midi, song_midi)
+            output += f"\nMIDI Similarity Score: {midi_similarity:.2%}\n"
 
             return output
 
@@ -95,6 +113,7 @@ class MusicDNAApp:
             This system performs multi-level analysis of audio samples:
             - Spectral Analysis (mel-spectrograms, MFCCs, chroma features)
             - Stem Separation (drums, bass, vocals, other)
+            - MIDI Analysis (note events, pitch, timing)
             - Feature Extraction per stem
             
             Upload a sample and a song to analyze their musical DNA.
