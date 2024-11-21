@@ -115,9 +115,19 @@ class MusicDNAApp:
             if not isinstance(sample_y, np.ndarray):
                 sample_y = np.array(sample_y)
             
+            # Handle 0-dimensional arrays
+            if sample_y.ndim == 0:
+                logger.warning("Received 0-dimensional sample array, converting to 1D")
+                sample_y = np.array([float(sample_y)])
+            
             song_y, _ = song_audio
             if not isinstance(song_y, np.ndarray):
                 song_y = np.array(song_y)
+                
+            # Handle 0-dimensional arrays
+            if song_y.ndim == 0:
+                logger.warning("Received 0-dimensional song array, converting to 1D")
+                song_y = np.array([float(song_y)])
 
             logger.info(f"Processing audio - Sample shape: {sample_y.shape}, Song shape: {song_y.shape}")
 

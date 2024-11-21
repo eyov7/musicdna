@@ -24,9 +24,18 @@ class GranularSampleDetector(BaseAnalyzer):
             if not isinstance(audio, np.ndarray):
                 audio = np.array(audio)
             
-            # Ensure 2D array
-            if len(audio.shape) == 1:
+            # Handle 0-dimensional arrays
+            if audio.ndim == 0:
+                logger.warning("Received 0-dimensional array, converting to 1D")
+                audio = np.array([float(audio)])
+            
+            # Handle 1D arrays
+            if audio.ndim == 1:
+                logger.info("Converting 1D array to 2D")
                 audio = audio.reshape(1, -1)
+            
+            # Log array shape for debugging
+            logger.info(f"Audio array shape after preprocessing: {audio.shape}")
                 
             return self._analyze_impl(audio)
             
@@ -65,10 +74,19 @@ class GranularSampleDetector(BaseAnalyzer):
             if not isinstance(track_audio, np.ndarray):
                 track_audio = np.array(track_audio)
                 
-            # Ensure 2D array
-            if len(track_audio.shape) == 1:
+            # Handle 0-dimensional arrays
+            if track_audio.ndim == 0:
+                logger.warning("Received 0-dimensional track array, converting to 1D")
+                track_audio = np.array([float(track_audio)])
+                
+            # Handle 1D arrays
+            if track_audio.ndim == 1:
+                logger.info("Converting track 1D array to 2D")
                 track_audio = track_audio.reshape(1, -1)
                 
+            # Log array shape for debugging
+            logger.info(f"Track array shape after preprocessing: {track_audio.shape}")
+            
             matches = []
             
             # Handle case where stem analysis is not available
@@ -120,8 +138,18 @@ class GranularSampleDetector(BaseAnalyzer):
             if not isinstance(audio, np.ndarray):
                 audio = np.array(audio)
                 
-            if len(audio.shape) == 1:
+            # Handle 0-dimensional arrays
+            if audio.ndim == 0:
+                logger.warning("Received 0-dimensional array in feature extraction, converting to 1D")
+                audio = np.array([float(audio)])
+                
+            # Handle 1D arrays
+            if audio.ndim == 1:
+                logger.info("Converting 1D array to 2D in feature extraction")
                 audio = audio.reshape(1, -1)
+                
+            # Log array shape for debugging
+            logger.info(f"Audio array shape in feature extraction: {audio.shape}")
                 
             return {
                 'rms': float(np.sqrt(np.mean(audio**2))),
