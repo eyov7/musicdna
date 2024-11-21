@@ -4,7 +4,6 @@ import librosa
 import logging
 from core.analyzers import SpectralAnalyzer, StemAnalyzer
 import torch
-import os
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -107,18 +106,9 @@ def main():
     # Create app instance
     app = MusicDNAApp()
     
-    # Create interface
+    # Create and launch interface
     demo = app.create_interface()
-    
-    # Get port from environment (for Lightning AI) or use default
-    port = int(os.environ.get('PORT', 7860))
-    
-    # Launch the interface
-    demo.launch(
-        server_name="0.0.0.0",  # Required for Lightning AI
-        server_port=port,
-        share=True
-    )
+    demo.launch(server_port=7860)
 
 if __name__ == "__main__":
     main()
