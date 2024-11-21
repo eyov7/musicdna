@@ -1,17 +1,77 @@
-# Sample Detection Demo
+# MusicDNA: Advanced Audio Sample Detection System
 
-This project implements a music sample detection system that can find occurrences of a short audio sample within longer songs. It uses state-of-the-art audio processing techniques including:
-- Demucs for audio source separation
-- Basic Pitch for MIDI conversion
-- Feature extraction and pattern matching
+## Project Vision
+MusicDNA is an AI-powered system designed to precisely locate and analyze audio samples within full songs using granular multi-level analysis. The system breaks down audio into its fundamental components and analyzes them at multiple levels to provide comprehensive sample detection.
+
+## Technical Architecture
+
+### 1. Analysis Levels
+- **Spectral Analysis**: Full spectrum examination of audio content
+- **Stem Analysis**: Individual analysis of separated audio components (drums, bass, vocals, other)
+- **MIDI Analysis**: Musical pattern detection through MIDI conversion
+- **Harmonic Analysis**: Key and chord progression detection
+- **Rhythmic Analysis**: Beat and rhythm pattern recognition
+
+### 2. Core Components
+
+#### Feature Extraction Pipeline
+- Mel-spectrogram computation
+- Chroma feature extraction
+- MFCC analysis
+- Stem separation using Demucs
+- MIDI conversion using Basic Pitch
+- Musical feature detection (key, tempo, rhythm)
+
+#### Pattern Matching Engine
+- Multi-level similarity detection
+- Cross-feature validation
+- Transformation-aware matching
+- Confidence scoring per feature type
+
+#### Transformation Detection
+- Pitch shift identification
+- Time stretching recognition
+- Audio effect detection
+- Cross-stem pattern analysis
+
+## Implementation Strategy
+
+### Phase 1: Core Architecture
+- [ ] Feature extraction pipeline
+- [ ] Basic pattern matching
+- [ ] Initial transformation detection
+
+### Phase 2: Advanced Features
+- [ ] MIDI analysis integration
+- [ ] Stem separation implementation
+- [ ] Enhanced transformation detection
+
+### Phase 3: Optimization
+- [ ] Parallel processing
+- [ ] GPU acceleration
+- [ ] Feature caching system
+
+## Technical Requirements
+
+### Dependencies
+- Python 3.10+
+- librosa: Audio feature extraction
+- numpy: Numerical computations
+- Demucs: Source separation
+- Basic Pitch: MIDI conversion
+- PyTorch: Deep learning operations
+
+### System Requirements
+- RAM: 8GB minimum (16GB recommended)
+- GPU: Optional but recommended for faster processing
+- Storage: 1GB minimum for base models
 
 ## Installation
 
 1. Clone the repository with submodules:
 ```bash
-git clone https://github.com/yourusername/musicdna.git
+git clone --recursive https://github.com/yourusername/musicdna.git
 cd musicdna
-git submodule update --init --recursive
 ```
 
 2. Install dependencies:
@@ -19,32 +79,65 @@ git submodule update --init --recursive
 pip install -r requirements.txt
 ```
 
-## Running the Demo
+## Usage
 
-1. Start the Gradio interface:
+1. Start the application:
 ```bash
 python main.py
 ```
 
-2. Open the web interface (default: http://localhost:7860)
+2. Access the web interface at http://localhost:7860
 
-## Usage
+3. Upload files:
+   - Sample audio clip (5-15 seconds)
+   - Full song for analysis
 
-1. Upload a short audio sample (5-15 seconds)
-2. Upload 3-5 songs to search through
-3. View results showing:
+4. View detailed analysis results:
    - Match locations with confidence scores
-   - Matched audio segments
-   - Similarity visualizations
+   - Transformation details
+   - Per-stem analysis results
 
-## Project Structure
+## Development Guidelines
 
-- `sample_detector.py`: Core implementation of sample detection algorithm
-- `app.py`: Gradio web interface
-- `requirements.txt`: Project dependencies
+### Code Organization
+```
+musicdna/
+├── core/
+│   ├── analyzers/         # Feature extraction modules
+│   ├── matchers/          # Pattern matching algorithms
+│   └── transformers/      # Audio transformation detection
+├── models/                # Pre-trained models
+├── utils/                 # Utility functions
+├── web/                   # Web interface
+└── tests/                 # Test suite
+```
 
-## Notes
+### Contributing
+1. Fork the repository
+2. Create a feature branch
+3. Submit a pull request
 
-- The sample should be 5-15 seconds long for optimal results
-- Supported audio formats: WAV, MP3, FLAC
-- GPU acceleration is used if available
+## Future Roadmap
+
+### Short-term Goals
+- Implement core feature extraction pipeline
+- Develop basic pattern matching system
+- Set up transformation detection
+
+### Mid-term Goals
+- Add MIDI analysis capabilities
+- Implement stem separation
+- Enhance transformation detection
+
+### Long-term Goals
+- Add machine learning models for pattern recognition
+- Implement real-time processing
+- Develop API for third-party integration
+
+## License
+[MIT License](LICENSE)
+
+## Acknowledgments
+- Demucs team for audio source separation
+- Basic Pitch team for MIDI conversion
+- Librosa team for audio processing tools
