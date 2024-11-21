@@ -38,17 +38,27 @@ class MusicDNAApp:
         """Perform comprehensive audio analysis."""
         try:
             # Create fingerprint
-            fingerprint = self.stem_analyzer.create_sample_fingerprint(audio_data)
+            analysis = self.stem_analyzer.analyze(audio_data)
             
-            # Extract features for display
-            features = fingerprint['audio_features']
+            # Get primary stem fingerprint
+            primary_stem = analysis['primary_stem']
+            primary_stem_data = analysis['stems'][primary_stem]
+            fingerprint = primary_stem_data['fingerprint']
+            
+            # Extract basic audio features
+            features = {
+                'tempo': librosa.beat.tempo(y=audio_data, sr=sample_rate)[0],
+                'rms_energy': np.mean(librosa.feature.rms(y=audio_data)),
+                'spectral_centroid': np.mean(librosa.feature.spectral_centroid(y=audio_data, sr=sample_rate))
+            }
             
             return {
                 'fingerprint': fingerprint,
                 'features': {
-                    'tempo': f"🎵 Tempo: {features.get('tempo', 0):.1f} BPM",
-                    'energy': f"💪 Energy: {features.get('rms_energy', 0):.3f}",
-                    'spectral_centroid': f"🎼 Brightness: {features.get('spectral_centroid', 0):.1f} Hz"
+                    'tempo': f"🎵 Tempo: {features['tempo']:.1f} BPM",
+                    'energy': f"💪 Energy: {features['rms_energy']:.3f}",
+                    'spectral_centroid': f"🎼 Brightness: {features['spectral_centroid']:.1f} Hz",
+                    'primary_stem': f"🎸 Primary Stem: {primary_stem}"
                 }
             }
         except Exception as e:
@@ -74,10 +84,10 @@ class MusicDNAApp:
             if not song_analysis:
                 return "Error analyzing song audio."
 
-            # Compare fingerprints
-            confidence_scores = self.stem_analyzer.compare_fingerprints(
-                sample_analysis['fingerprint'],
-                song_analysis['fingerprint']
+            # Find sample matches
+            matches = self.stem_analyzer.find_sample(
+                sample_data,
+                self.stem_analyzer.separate_stems(song_data)
             )
 
             # Format results
@@ -91,93 +101,42 @@ class MusicDNAApp:
             for key, value in song_analysis['features'].items():
                 results.append(f"  {value}")
 
-            results.append("\n🎯 Match Confidence Scores:")
-            results.append(f"  Overall: {confidence_scores.get('overall', 0):.2%}")
-            
-            if 'stems' in confidence_scores:
-                results.append("\n🎼 Per-Stem Confidence:")
-                stem_emojis = {
-                    'drums': '🥁',
-                    'bass': '🎸',
-                    'vocals': '🎤',
-                    'other': '🎹'
-                }
-                for stem, score in confidence_scores['stems'].items():
-                    emoji = stem_emojis.get(stem, '🎵')
-                    results.append(f"  {emoji} {stem.title()}: {score:.2%}")
+            results.append("\n🎯 Sample Matches Found:")
+            if matches:
+                for match in matches:
+                    results.append(
+                        f"  Match at {match['start']/sample_rate:.2f}s "
+                        f"in {match['stem']} stem "
+                        f"(confidence: {match['confidence']:.2%})"
+                    )
+            else:
+                results.append("  No significant matches found")
 
             return "\n".join(results)
 
         except Exception as e:
-            logger.error(f"Error processing audio: {str(e)}")
+            logger.error(f"Error in audio processing: {str(e)}")
             return f"Error processing audio: {str(e)}"
 
     def setup_interface(self):
-        """Set up the enhanced Gradio interface."""
+        """Setup the Gradio interface."""
         self.interface = gr.Interface(
             fn=self.process_audio,
             inputs=[
                 gr.Audio(label="Sample Audio", type="numpy"),
-                gr.Audio(label="Full Song", type="numpy")
+                gr.Audio(label="Song Audio", type="numpy")
             ],
-            outputs=[
-                gr.Textbox(label="Analysis Results")
-            ],
-            title="🧬 MusicDNA - Advanced Sample Detection",
+            outputs=gr.Textbox(label="Analysis Results"),
+            title="MusicDNA - Advanced Sample Detection",
             description="""
-            ## 🎵 MusicDNA: Advanced Audio DNA Analysis System
-
-            This system performs comprehensive audio analysis using state-of-the-art techniques:
-
-            ### 🔬 Analysis Capabilities:
-
-            1. 📊 Spectral Analysis
-               - Multiple spectrogram representations
-               - Fourier component analysis
-               - Frequency distribution patterns
-
-            2. 🎼 Stem Separation & Analysis
-               - 🥁 Drums: Rhythm patterns & timing
-               - 🎸 Bass: Harmonic foundation
-               - 🎤 Vocals: Melodic elements
-               - 🎹 Other: Additional components
-
-            3. 🎵 Feature Extraction
-               - Tempo detection
-               - Energy analysis
-               - Spectral characteristics
-               - MIDI pattern recognition
-
-            4. 🧬 DNA Matching
-               - Multi-level fingerprint comparison
-               - Per-stem confidence scoring
-               - Transformation detection
-               - Pattern recognition
-
-            ### 💡 How to Use:
-
-            1. **Upload Sample**: Add the audio sample you want to find
-            2. **Upload Song**: Add the full song to analyze
-            3. **View Results**: Get detailed analysis including:
-               - Audio characteristics
-               - Match confidence scores
-               - Per-stem analysis
-               - Transformation details
-
-            ### 🎯 Best Practices:
-            - Use high-quality audio files
-            - Trim samples to relevant sections
-            - Allow processing time for detailed analysis
-
-            Start analyzing your music's DNA! 🎵
-            """,
-            theme=gr.themes.Soft(),
-            allow_flagging="never"
+            Upload a sample audio file and a song to analyze potential sample usage.
+            The system will perform granular analysis using stem separation and multi-level fingerprinting.
+            """
         )
 
 def main():
     app = MusicDNAApp()
-    app.interface.launch()
+    app.interface.launch(debug=True)
 
 if __name__ == "__main__":
     main()
