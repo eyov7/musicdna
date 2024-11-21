@@ -1,85 +1,124 @@
+import gradio as gr
 import numpy as np
 import librosa
-import gradio as gr
-import matplotlib.pyplot as plt
-import os
-from tempfile import NamedTemporaryFile
-from similarity_detector import SimilarityDetector
-
-# Set up logging
 import logging
+from core.analyzers import SpectralAnalyzer, StemAnalyzer
+import torch
+import os
+
+# Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Initialize detector
-detector = SimilarityDetector()
+class MusicDNAApp:
+    def __init__(self):
+        # Initialize analyzers
+        self.spectral_analyzer = SpectralAnalyzer()
+        self.stem_analyzer = StemAnalyzer(device="cuda" if torch.cuda.is_available() else "cpu")
+        logger.info(f"Initialized analyzers. Using device: {self.stem_analyzer.device}")
 
-def process_audio(sample_path: str, song_path: str, use_advanced: bool) -> str:
-    """Process audio files and return matches with visualizations"""
-    try:
-        # Load and process audio files
-        sample_y, sr = librosa.load(sample_path, sr=22050)  # Use consistent sample rate
-        song_y, _ = librosa.load(song_path, sr=22050)
-        
-        # Detect matches
-        results = detector.detect_matches(sample_y, song_y, use_advanced=use_advanced)
-        matches = results.get('matches', [])
-        
-        if not matches:
-            return "No matches found. Try adjusting the sample or using a different section."
-        
-        # Format output
-        output_text = f"Found matches using {'advanced' if use_advanced else 'basic'} detection:\n\n"
-        for i, match in enumerate(matches, 1):
-            output_text += f"{i}. Time: {match['start_time']:.2f}s\n"
-            output_text += f"   Duration: {match['duration']:.2f}s\n"
-            output_text += f"   Confidence: {match['confidence']:.2%}\n"
-            output_text += f"   Method: {match['method']}\n\n"
-        
-        return output_text
-        
-    except Exception as e:
-        logger.error(f"Error in sample analysis: {str(e)}")
-        import traceback
-        logger.error(traceback.format_exc())
-        return f"Error processing audio: {str(e)}"
-
-def create_interface():
-    """Create Gradio interface"""
-    interface = gr.Interface(
-        fn=process_audio,
-        inputs=[
-            gr.Audio(label="Upload Sample (5-15 seconds)", type="filepath"),
-            gr.Audio(label="Upload Full Song", type="filepath"),
-            gr.Checkbox(label="Use Advanced Detection", value=True, 
-                       info="Enable stem separation and pitch tracking (slower but more accurate)")
-        ],
-        outputs=[
-            gr.Textbox(label="Detection Results", lines=15)
-        ],
-        title="MusicDNA - Sample Detection",
-        description="""
-        ## Advanced Sample Detection System
-        
-        Upload a sample audio clip and a full song to find where the sample appears in the song.
-        
-        Features:
-        - Basic Detection: Uses chroma features for quick matching
-        - Advanced Detection: Uses stem separation and pitch tracking for more accurate results
-        
-        Instructions:
-        1. Upload a short sample (5-15 seconds)
-        2. Upload the full song to analyze
-        3. Choose detection method
-        4. Click submit to find matches
-        
-        The system will analyze the audio and show where the sample appears in the song.
+    def process_audio(self, sample_path: str, song_path: str) -> str:
         """
-    )
-    return interface
+        Process audio files and return analysis results
+        """
+        try:
+            # Load audio files
+            logger.info("Loading audio files...")
+            sample_y, sr = librosa.load(sample_path, sr=22050)
+            song_y, _ = librosa.load(song_path, sr=22050)
 
-# Create Gradio interface
-demo = create_interface()
+            # Analyze sample
+            logger.info("Analyzing sample...")
+            sample_spectral = self.spectral_analyzer.analyze(sample_y)
+            sample_stems = self.stem_analyzer.analyze(sample_y)
+
+            # Analyze song (just a portion for initial comparison)
+            song_duration = len(song_y) / sr
+            logger.info(f"Song duration: {song_duration:.2f} seconds")
+            
+            # Take first minute for initial analysis
+            analysis_duration = min(60, song_duration)
+            song_samples = int(analysis_duration * sr)
+            song_excerpt = song_y[:song_samples]
+            
+            logger.info("Analyzing song excerpt...")
+            song_spectral = self.spectral_analyzer.analyze(song_excerpt)
+            song_stems = self.stem_analyzer.analyze(song_excerpt)
+
+            # Format results
+            output = "Analysis Results:\n\n"
+            
+            # Sample Analysis
+            output += "Sample Analysis:\n"
+            output += f"Duration: {len(sample_y)/sr:.2f} seconds\n"
+            output += "Features extracted:\n"
+            for feature in sample_spectral:
+                if feature != 'metadata':
+                    output += f"- {feature}\n"
+            
+            output += "\nStem Analysis:\n"
+            for stem_name in sample_stems['stem_features']:
+                output += f"- {stem_name} stem extracted and analyzed\n"
+            
+            # Song Analysis
+            output += f"\nSong Analysis (first {analysis_duration:.1f} seconds):\n"
+            output += f"Total Duration: {song_duration:.2f} seconds\n"
+            output += "Features extracted:\n"
+            for feature in song_spectral:
+                if feature != 'metadata':
+                    output += f"- {feature}\n"
+                    
+            output += "\nStem Analysis:\n"
+            for stem_name in song_stems['stem_features']:
+                output += f"- {stem_name} stem extracted and analyzed\n"
+
+            return output
+
+        except Exception as e:
+            logger.error(f"Error in processing: {str(e)}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return f"Error processing audio: {str(e)}"
+
+    def create_interface(self):
+        """Create Gradio interface"""
+        interface = gr.Interface(
+            fn=self.process_audio,
+            inputs=[
+                gr.Audio(label="Upload Sample (5-15 seconds)", type="filepath"),
+                gr.Audio(label="Upload Full Song", type="filepath")
+            ],
+            outputs=gr.Textbox(label="Analysis Results", lines=20),
+            title="MusicDNA - Advanced Sample Detection",
+            description="""
+            ## MusicDNA Sample Detection System
+            
+            This system performs multi-level analysis of audio samples:
+            - Spectral Analysis (mel-spectrograms, MFCCs, chroma features)
+            - Stem Separation (drums, bass, vocals, other)
+            - Feature Extraction per stem
+            
+            Upload a sample and a song to analyze their musical DNA.
+            """
+        )
+        return interface
+
+def main():
+    # Create app instance
+    app = MusicDNAApp()
+    
+    # Create interface
+    demo = app.create_interface()
+    
+    # Get port from environment (for Lightning AI) or use default
+    port = int(os.environ.get('PORT', 7860))
+    
+    # Launch the interface
+    demo.launch(
+        server_name="0.0.0.0",  # Required for Lightning AI
+        server_port=port,
+        share=True
+    )
 
 if __name__ == "__main__":
-    demo.launch(server_port=7860, share=True)
+    main()
