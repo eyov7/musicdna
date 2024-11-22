@@ -43,6 +43,22 @@ class StemAnalyzer(BaseAnalyzer):
         Performs full stem-based analysis of the audio.
         """
         try:
+            # Verify input type
+            if not isinstance(audio, np.ndarray):
+                raise TypeError(f"Expected numpy array, got {type(audio)}")
+            
+            # Ensure audio is float32 and in correct shape
+            if audio.dtype != np.float32:
+                audio = audio.astype(np.float32) / 32768.0  # Convert from int16 to float32
+            
+            # Ensure 2D array (channels, samples)
+            if audio.ndim == 1:
+                audio = audio.reshape(1, -1)
+            elif audio.ndim == 2 and audio.shape[0] > audio.shape[1]:
+                audio = audio.T  # Transpose if shape is (samples, channels)
+                
+            logger.info(f"Processing audio shape: {audio.shape}, dtype: {audio.dtype}")
+            
             # Separate into stems
             stems = self.separate_stems(audio)
             
@@ -70,6 +86,14 @@ class StemAnalyzer(BaseAnalyzer):
         """
         Create dual fingerprint (Visual + MIDI) of audio.
         """
+        # Debug logging
+        logger.info(f"Creating fingerprint for audio type: {type(audio)}")
+        
+        # Ensure audio is numpy array
+        if not isinstance(audio, np.ndarray):
+            logger.info(f"Converting fingerprint audio to numpy array")
+            audio = np.array(audio)
+        
         # Ensure correct audio format
         if audio.ndim == 1:
             audio = audio.reshape(1, -1)
@@ -118,6 +142,10 @@ class StemAnalyzer(BaseAnalyzer):
     
     def _is_melodic(self, audio: np.ndarray) -> bool:
         """Determine if audio contains significant melodic content."""
+        # Ensure audio is numpy array
+        if not isinstance(audio, np.ndarray):
+            audio = np.array(audio)
+            
         flatness = librosa.feature.spectral_flatness(y=audio[0])[0]
         return np.mean(flatness) < 0.3
     
@@ -127,12 +155,23 @@ class StemAnalyzer(BaseAnalyzer):
         Returns dict of stems: drums, bass, vocals, other
         """
         try:
+            # Debug logging
+            logger.info(f"Separating stems for audio type: {type(audio)}")
+            
+            # Ensure audio is numpy array
+            if not isinstance(audio, np.ndarray):
+                logger.info("Converting separation audio to numpy array")
+                audio = np.array(audio)
+                logger.info(f"Converted audio shape: {audio.shape}")
+            
             # Ensure correct audio format for Demucs
             if audio.ndim == 1:
                 audio = audio.reshape(1, -1)
+                logger.info(f"Reshaped audio to: {audio.shape}")
             
             # Convert to proper format (channels, samples)
             audio = convert_audio(torch.from_numpy(audio), self.sample_rate, self.demucs_model.samplerate)
+            logger.info(f"Converted audio shape: {audio.shape}")
             
             # Move to GPU if available
             if torch.cuda.is_available():
@@ -160,6 +199,13 @@ class StemAnalyzer(BaseAnalyzer):
         """
         Find sample occurrences in stems using dual fingerprinting.
         """
+        # Debug logging
+        logger.info(f"Finding sample of type: {type(sample)}")
+        
+        # Ensure sample is numpy array
+        if not isinstance(sample, np.ndarray):
+            sample = np.array(sample)
+        
         # Create sample fingerprint
         sample_fp = self.create_fingerprint(sample)
         

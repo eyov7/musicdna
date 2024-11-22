@@ -8,6 +8,7 @@ from pathlib import Path
 import librosa
 import librosa.display
 import sys
+from typing import Dict, Any
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -34,7 +35,7 @@ class MusicDNAApp:
         plt.title('Mel Spectrogram')
         return fig
 
-    def analyze_audio(self, audio_data, sample_rate):
+    def analyze_audio(self, audio_data: np.ndarray, sample_rate: int) -> Dict[str, Any]:
         """Perform comprehensive audio analysis."""
         try:
             # Create fingerprint
@@ -71,8 +72,18 @@ class MusicDNAApp:
             if sample_audio is None or song_audio is None:
                 return "Please provide both sample and song audio files."
 
-            sample_data, sample_rate = sample_audio
-            song_data, song_rate = song_audio
+            # Unpack audio data correctly
+            sample_rate, sample_data = sample_audio
+            song_rate, song_data = song_audio
+
+            # Verify data types
+            if not isinstance(sample_data, np.ndarray):
+                return "Invalid sample audio format. Expected numpy array."
+            if not isinstance(song_data, np.ndarray):
+                return "Invalid song audio format. Expected numpy array."
+
+            logger.info(f"Sample audio shape: {sample_data.shape}, rate: {sample_rate}")
+            logger.info(f"Song audio shape: {song_data.shape}, rate: {song_rate}")
 
             # Analyze sample
             sample_analysis = self.analyze_audio(sample_data, sample_rate)
