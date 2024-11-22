@@ -158,28 +158,33 @@ class StemAnalyzer(BaseAnalyzer):
             # Debug logging
             logger.info(f"Separating stems for audio type: {type(audio)}")
             
-            # Ensure audio is numpy array
-            if not isinstance(audio, np.ndarray):
-                logger.info("Converting separation audio to numpy array")
-                audio = np.array(audio)
-                logger.info(f"Converted audio shape: {audio.shape}")
+            # Convert to torch tensor and ensure float32
+            wav = torch.tensor(audio).to(torch.float32)
+            if wav.ndim == 1:
+                wav = wav.unsqueeze(0)  # Add channel dimension for mono
             
-            # Ensure correct audio format for Demucs
-            if audio.ndim == 1:
-                audio = audio.reshape(1, -1)
-                logger.info(f"Reshaped audio to: {audio.shape}")
+            # Add batch dimension
+            wav = wav.unsqueeze(0)  # Shape: (batch, channels, samples)
             
-            # Convert to proper format (channels, samples)
-            audio = convert_audio(torch.from_numpy(audio), self.sample_rate, self.demucs_model.samplerate)
-            logger.info(f"Converted audio shape: {audio.shape}")
+            logger.info(f"Audio tensor shape before conversion: {wav.shape}")
+            
+            # Convert audio to match model's format
+            wav = convert_audio(
+                wav,
+                self.sample_rate,
+                self.demucs_model.samplerate,
+                self.demucs_model.audio_channels
+            )
+            
+            logger.info(f"Audio tensor shape after conversion: {wav.shape}")
             
             # Move to GPU if available
             if torch.cuda.is_available():
-                audio = audio.cuda()
+                wav = wav.cuda()
                 
             # Apply model with proper reshaping
             with torch.no_grad():
-                sources = apply_model(self.demucs_model, audio, split=True, device='cuda' if torch.cuda.is_available() else 'cpu')
+                sources = apply_model(self.demucs_model, wav, split=True, device='cuda' if torch.cuda.is_available() else 'cpu')
                 sources = sources[0]  # Remove batch dimension
             
             # Convert back to numpy and create dict
