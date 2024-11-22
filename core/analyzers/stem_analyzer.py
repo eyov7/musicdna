@@ -9,6 +9,7 @@ from .base_analyzer import BaseAnalyzer
 import librosa
 import torch
 from demucs.pretrained import get_model
+from demucs.apply import apply_model
 from basic_pitch import predict
 
 logger = logging.getLogger(__name__)
@@ -125,12 +126,15 @@ class StemAnalyzer(BaseAnalyzer):
         Returns dict of stems: drums, bass, vocals, other
         """
         # Prepare audio for Demucs
+        if audio.ndim == 1:
+            audio = audio.reshape(1, -1)
         audio_tensor = torch.tensor(audio)
         if torch.cuda.is_available():
             audio_tensor = audio_tensor.cuda()
             
-        # Separate stems
-        stems = self.demucs_model.separate(audio_tensor)
+        # Separate stems using apply_model
+        with torch.no_grad():
+            stems = apply_model(self.demucs_model, audio_tensor, split=True)[0]
         
         # Convert back to numpy and create dict
         stem_names = ['drums', 'bass', 'vocals', 'other']
