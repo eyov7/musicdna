@@ -10,6 +10,7 @@ import librosa
 import torch
 from demucs.pretrained import get_model
 from demucs.apply import apply_model
+from demucs.audio import convert_audio
 from basic_pitch import predict
 
 logger = logging.getLogger(__name__)
@@ -125,23 +126,33 @@ class StemAnalyzer(BaseAnalyzer):
         Decompose audio into stems (our natural decomposition).
         Returns dict of stems: drums, bass, vocals, other
         """
-        # Prepare audio for Demucs
-        if audio.ndim == 1:
-            audio = audio.reshape(1, -1)
-        audio_tensor = torch.tensor(audio)
-        if torch.cuda.is_available():
-            audio_tensor = audio_tensor.cuda()
+        try:
+            # Ensure correct audio format for Demucs
+            if audio.ndim == 1:
+                audio = audio.reshape(1, -1)
             
-        # Separate stems using apply_model
-        with torch.no_grad():
-            stems = apply_model(self.demucs_model, audio_tensor, split=True)[0]
-        
-        # Convert back to numpy and create dict
-        stem_names = ['drums', 'bass', 'vocals', 'other']
-        return {
-            name: stem.cpu().numpy() 
-            for name, stem in zip(stem_names, stems)
-        }
+            # Convert to proper format (channels, samples)
+            audio = convert_audio(torch.from_numpy(audio), self.sample_rate, self.demucs_model.samplerate)
+            
+            # Move to GPU if available
+            if torch.cuda.is_available():
+                audio = audio.cuda()
+                
+            # Apply model with proper reshaping
+            with torch.no_grad():
+                sources = apply_model(self.demucs_model, audio, split=True, device='cuda' if torch.cuda.is_available() else 'cpu')
+                sources = sources[0]  # Remove batch dimension
+            
+            # Convert back to numpy and create dict
+            stem_names = ['drums', 'bass', 'vocals', 'other']
+            return {
+                name: source.cpu().numpy() 
+                for name, source in zip(stem_names, sources)
+            }
+            
+        except Exception as e:
+            logger.error(f"Error in stem separation: {str(e)}")
+            raise
     
     def find_sample(self, sample: np.ndarray, 
                    stems: Dict[str, np.ndarray],

@@ -120,19 +120,80 @@ class MusicDNAApp:
 
     def setup_interface(self):
         """Setup the Gradio interface."""
-        self.interface = gr.Interface(
-            fn=self.process_audio,
-            inputs=[
-                gr.Audio(label="Sample Audio", type="numpy"),
-                gr.Audio(label="Song Audio", type="numpy")
-            ],
-            outputs=gr.Textbox(label="Analysis Results"),
-            title="MusicDNA - Advanced Sample Detection",
-            description="""
-            Upload a sample audio file and a song to analyze potential sample usage.
-            The system will perform granular analysis using stem separation and multi-level fingerprinting.
-            """
-        )
+        css = """
+        .gradio-container {
+            font-family: 'Arial', sans-serif;
+            max-width: 1200px;
+            margin: auto;
+        }
+        .gr-button {
+            background-color: #2196F3;
+            border: none;
+            color: white;
+            border-radius: 4px;
+        }
+        .gr-button:hover {
+            background-color: #1976D2;
+        }
+        .output-text {
+            font-family: 'Courier New', monospace;
+            padding: 1rem;
+            background-color: #f5f5f5;
+            border-radius: 4px;
+        }
+        """
+        
+        with gr.Blocks(css=css, title="MusicDNA - Advanced Sample Detection") as demo:
+            gr.Markdown("""
+            # 🧬 MusicDNA: Advanced Audio DNA Analysis System
+
+            ## 🎵 About
+            MusicDNA is a state-of-the-art audio analysis system that uses stem separation 
+            and multi-level fingerprinting to detect and analyze musical samples.
+
+            ### 🔬 Key Features:
+            1. **Stem Separation**: Isolates drums, bass, vocals, and other components
+            2. **Visual DNA**: Advanced spectrogram analysis
+            3. **MIDI DNA**: Melodic pattern recognition
+            4. **Multi-level Matching**: Context-aware sample detection
+
+            ### 💡 How to Use:
+            1. Upload your sample audio
+            2. Upload the full song to analyze
+            3. Get detailed analysis of matches and audio characteristics
+            """)
+
+            with gr.Row():
+                with gr.Column():
+                    sample_input = gr.Audio(
+                        label="Sample Audio",
+                        type="numpy",
+                        elem_id="sample-audio"
+                    )
+                    song_input = gr.Audio(
+                        label="Song Audio",
+                        type="numpy",
+                        elem_id="song-audio"
+                    )
+                    analyze_btn = gr.Button(
+                        "🔍 Analyze",
+                        elem_id="analyze-btn"
+                    )
+                
+                with gr.Column():
+                    output = gr.Textbox(
+                        label="Analysis Results",
+                        elem_id="results",
+                        elem_classes="output-text"
+                    )
+
+            analyze_btn.click(
+                fn=self.process_audio,
+                inputs=[sample_input, song_input],
+                outputs=output
+            )
+
+        self.interface = demo
 
 def main():
     app = MusicDNAApp()
